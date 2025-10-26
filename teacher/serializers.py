@@ -22,10 +22,5 @@ class AttendanceSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Attendance
-        fields = [
-            'id', 'teacher', 'teacher_name', 'student_name', 'qr_code_data', 'timestamp',
-            'guardian_name', 'guardian_age', 'guardian_address', 
-            'guardian_relationship', 'guardian_contact', 'is_unregistered'
-        ]
-
-# Remove UnregisteredGuardianSerializer
+        fields = ['id', 'teacher', 'teacher_name', 'student_name', 'qr_code_data', 'timestamp']
+        read_only_fields = ['timestamp']
