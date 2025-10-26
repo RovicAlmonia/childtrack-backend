@@ -6,4 +6,6 @@ psycopg2-binary==2.9.11
 python-dotenv==1.1.1
 sqlparse==0.5.3
 tzdata==2025.2
-gunicorn
+gunicorn==23.0.0
+dj-database-url==3.0.1
+whitenoise==6.8.2
