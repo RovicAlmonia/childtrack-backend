@@ -77,84 +77,18 @@ class PublicAttendanceListView(generics.ListAPIView):
     permission_classes = []
 
 # -----------------------------
-# GUARDIAN REGISTRATION (Using Attendance Table)
+# CUSTOM ERROR HANDLER
 # -----------------------------
-class UnregisteredGuardianView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+def custom_error_handler(exc, context):
+    from rest_framework.views import exception_handler
+    response = exception_handler(exc, context)
     
-    def get(self, request):
-        """Get all unregistered guardians"""
-        try:
-            guardians = Attendance.objects.filter(is_unregistered=True).order_by('-timestamp')
-            data = [{
-                'id': g.id,
-                'name': g.guardian_name,
-                'age': g.guardian_age,
-                'address': g.guardian_address,
-                'relationship': g.guardian_relationship,
-                'contact': g.guardian_contact,
-                'student': g.student_name,
-                'timestamp': g.timestamp.isoformat()
-            } for g in guardians]
-            return Response(data, status=status.HTTP_200_OK)
-        except Exception as e:
-            return Response(
-                {"error": f"Error fetching guardians: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-    
-    def post(self, request):
-        """Register a new unregistered guardian"""
-        try:
-            # Get the teacher profile
-            try:
-                teacher_profile = TeacherProfile.objects.get(user=request.user)
-            except TeacherProfile.DoesNotExist:
-                return Response(
-                    {"error": "Teacher profile not found. Please complete your profile first."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Validate required fields
-            required_fields = ['name', 'age', 'address', 'relationship', 'contact', 'student']
-            for field in required_fields:
-                if not request.data.get(field):
-                    return Response(
-                        {"error": f"Missing required field: {field}"},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-            
-            # Create attendance record with guardian info
-            guardian = Attendance.objects.create(
-                teacher=teacher_profile,
-                student_name=request.data.get('student'),
-                qr_code_data='UNREGISTERED_GUARDIAN',
-                guardian_name=request.data.get('name'),
-                guardian_age=int(request.data.get('age')),
-                guardian_address=request.data.get('address'),
-                guardian_relationship=request.data.get('relationship'),
-                guardian_contact=request.data.get('contact'),
-                is_unregistered=True
-            )
-            
-            return Response({
-                'id': guardian.id,
-                'name': guardian.guardian_name,
-                'age': guardian.guardian_age,
-                'address': guardian.guardian_address,
-                'relationship': guardian.guardian_relationship,
-                'contact': guardian.guardian_contact,
-                'student': guardian.student_name,
-                'timestamp': guardian.timestamp.isoformat()
-            }, status=status.HTTP_201_CREATED)
-            
-        except ValueError as e:
-            return Response(
-                {"error": f"Invalid data format: {str(e)}"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        except Exception as e:
-            return Response(
-                {"error": f"Error creating guardian: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+    if response is not None:
+        response.data['status_code'] = response.status_code
+    else:
+        # Handle non-DRF exceptions
+        response = Response(
+            {"error": "Internal Server Error", "details": str(exc)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    return response
