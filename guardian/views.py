@@ -32,6 +32,15 @@ class GuardianView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
+            # Validate required fields
+            required_fields = ['name', 'age', 'address', 'relationship', 'contact', 'student_name']
+            for field in required_fields:
+                if not request.data.get(field):
+                    return Response(
+                        {"error": f"Missing required field: {field}"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
             # Prepare data with teacher
             data = request.data.copy()
             data['teacher'] = teacher_profile.id
@@ -44,6 +53,11 @@ class GuardianView(APIView):
             
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             
+        except ValueError as e:
+            return Response(
+                {"error": f"Invalid data format: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         except Exception as e:
             return Response(
                 {"error": f"Error creating guardian: {str(e)}"},
