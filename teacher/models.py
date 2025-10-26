@@ -18,15 +18,5 @@ class Attendance(models.Model):
     qr_code_data = models.TextField()
     timestamp = models.DateTimeField(auto_now_add=True)
     
-    # Guardian information fields (NEW - add these)
-    guardian_name = models.CharField(max_length=100, blank=True, null=True)
-    guardian_age = models.IntegerField(blank=True, null=True)
-    guardian_address = models.TextField(blank=True, null=True)
-    guardian_relationship = models.CharField(max_length=50, blank=True, null=True)
-    guardian_contact = models.CharField(max_length=15, blank=True, null=True)
-    is_unregistered = models.BooleanField(default=False)
-    
     def __str__(self):
         return f"{self.student_name} - {self.timestamp}"
-
-# REMOVE UnregisteredGuardian model completely - don't use it
