@@ -13,3 +13,8 @@ class Guardian(models.Model):
     
     def __str__(self):
         return f"{self.name} - {self.student_name}"
+    
+    class Meta:
+        verbose_name = "Guardian"
+        verbose_name_plural = "Guardians"
+        ordering = ['-timestamp']
