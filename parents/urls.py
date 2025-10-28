@@ -1,15 +1,21 @@
 from django.urls import path
 from .views import (
     StudentRegistrationView,
-    StudentListView,
-    ParentGuardianListView,
+    PublicStudentRegistrationView,
+    MyStudentsView,
+    MyParentsGuardiansView,
+    TeacherDashboardStatsView,
     StudentDetailView
 )
 
 urlpatterns = [
+    # Teacher-authenticated endpoints
     path('register/', StudentRegistrationView.as_view(), name='student_register'),
-    path('students/', StudentListView.as_view(), name='student_list'),
+    path('my-students/', MyStudentsView.as_view(), name='my_students'),
+    path('my-parents/', MyParentsGuardiansView.as_view(), name='my_parents'),
+    path('dashboard-stats/', TeacherDashboardStatsView.as_view(), name='dashboard_stats'),
     path('students/<str:lrn>/', StudentDetailView.as_view(), name='student_detail'),
-    path('parents/', ParentGuardianListView.as_view(), name='parent_list'),
-    path('parents/<str:lrn>/', ParentGuardianListView.as_view(), name='parent_by_student'),
+    
+    # Public endpoint for parent/guardian self-registration
+    path('public/register/', PublicStudentRegistrationView.as_view(), name='public_register'),
 ]
