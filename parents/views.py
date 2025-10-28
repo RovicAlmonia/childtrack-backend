@@ -8,6 +8,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.pagination import PageNumberPagination
 
+
+
 from .models import Student, ParentGuardian
 from teacher.models import TeacherProfile
 from .serializers import (
@@ -18,6 +20,25 @@ from .serializers import (
 )
 
 logger = logging.getLogger(__name__)
+
+import traceback, json
+
+class RegistrationView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        try:
+            print("🔹 Incoming data:", json.dumps(request.data, indent=2))
+            serializer = RegistrationSerializer(data=request.data)
+            if serializer.is_valid():
+                result = serializer.save()
+                return Response(result, status=status.HTTP_201_CREATED)
+            print("❌ Serializer errors:", serializer.errors)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            print("❌ SERVER ERROR:", e)
+            traceback.print_exc()
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class StandardPagination(PageNumberPagination):
@@ -285,3 +306,4 @@ class AllTeachersStudentsView(APIView):
         )
         serializer = TeacherStudentsSerializer(teachers, many=True)
         return Response(serializer.data)
+
