@@ -78,15 +78,15 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'childtrack_project.wsgi.application'
 
-# Database
 DATABASES = {
     'default': dj_database_url.parse(
         os.getenv(
             'DATABASE_URL',
-            'postgresql://childtrack_user:e2L0RkBwxxTQ8pi123Hon0t7SFqhkouY@dpg-d3dn7ha4d50c739l7fe0-a/childtrack'
+            'postgresql://childtrack_reub_user:8HJN1dw8KCskj59fSOV8kZJzLjMo0zz3@dpg-d43ireumcj7s73b4shj0-a/childtrack_reub'
         )
     )
 }
+
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
