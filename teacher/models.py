@@ -13,10 +13,66 @@ class TeacherProfile(models.Model):
         return self.user.username
 
 class Attendance(models.Model):
-    teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE)
+    STATUS_CHOICES = [
+        ('Present', 'Present'),
+        ('Absent', 'Absent'),
+        ('Late', 'Late'),
+    ]
+    
+    teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='attendances')
     student_name = models.CharField(max_length=100)
-    qr_code_data = models.TextField()
+    date = models.DateField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Present')
+    qr_code_data = models.TextField(blank=True, null=True)
     timestamp = models.DateTimeField(auto_now_add=True)
     
+    class Meta:
+        ordering = ['-date', '-timestamp']
+        unique_together = ['teacher', 'student_name', 'date']
+    
     def __str__(self):
-        return f"{self.student_name} - {self.timestamp}"
+        return f"{self.student_name} - {self.status} - {self.date}"
+
+class Absence(models.Model):
+    teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='absences')
+    student_name = models.CharField(max_length=100)
+    date = models.DateField()
+    reason = models.TextField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-date', '-timestamp']
+    
+    def __str__(self):
+        return f"{self.student_name} - Absent on {self.date}"
+
+class Dropout(models.Model):
+    teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='dropouts')
+    student_name = models.CharField(max_length=100)
+    date = models.DateField()
+    reason = models.TextField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-date', '-timestamp']
+    
+    def __str__(self):
+        return f"{self.student_name} - Dropout on {self.date}"
+
+class UnauthorizedPerson(models.Model):
+    teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='unauthorized_persons')
+    name = models.CharField(max_length=100)
+    address = models.TextField()
+    age = models.IntegerField()
+    student_name = models.CharField(max_length=100)
+    guardian_name = models.CharField(max_length=100)
+    relation = models.CharField(max_length=50)
+    contact = models.CharField(max_length=15)
+    photo = models.TextField(blank=True, null=True)  # Base64 encoded image
+    timestamp = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-timestamp']
+    
+    def __str__(self):
+        return f"{self.name} - {self.student_name}"
