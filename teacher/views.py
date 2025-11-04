@@ -106,46 +106,37 @@ class LoginView(APIView):
 # -----------------------------
 class AttendanceView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-    
+
     def get(self, request):
         try:
-            teacher_profile = TeacherProfile.objects.get(user=request.user)
-            
+            if not request.user.is_authenticated:
+                return Response({"error": "User not authenticated"}, status=status.HTTP_401_UNAUTHORIZED)
+
+            teacher_profile = TeacherProfile.objects.filter(user=request.user).first()
+            if not teacher_profile:
+                return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
+
             date = request.query_params.get('date')
             student = request.query_params.get('student')
             status_filter = request.query_params.get('status')
-            
+
             queryset = Attendance.objects.filter(teacher=teacher_profile)
-            
             if date:
                 queryset = queryset.filter(date=date)
             if student:
                 queryset = queryset.filter(student_name__icontains=student)
             if status_filter:
                 queryset = queryset.filter(status=status_filter)
-            
+
             attendances = queryset.order_by('-date', '-timestamp')
             serializer = AttendanceSerializer(attendances, many=True)
             return Response(serializer.data, status=status.HTTP_200_OK)
-        except TeacherProfile.DoesNotExist:
-            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
+
         except Exception as e:
-            return Response({"error": f"Error fetching attendance: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
-    def post(self, request):
-        try:
-            teacher_profile = TeacherProfile.objects.get(user=request.user)
-            data = request.data.copy()
-            data['teacher'] = teacher_profile.id
-            serializer = AttendanceSerializer(data=data)
-            if serializer.is_valid():
-                serializer.save(teacher=teacher_profile)
-                return Response(serializer.data, status=status.HTTP_201_CREATED)
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        except TeacherProfile.DoesNotExist:
-            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response({"error": f"Error creating attendance: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            import traceback
+            print(traceback.format_exc())  # <-- Add this temporarily to see full error in Render logs
+            return Response({"error": f"Error fetching attendance: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class AttendanceDetailView(APIView):
     permission_classes = [permissions.IsAuthenticated]
