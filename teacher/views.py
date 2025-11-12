@@ -583,22 +583,23 @@ def add_image_to_cell(ws, img, cell):
     # Add image to worksheet at cell location
     ws.add_image(excel_img, cell)
 
-
 # -----------------------------
-# GENERATE SF2 EXCEL WITH HALF TRIANGLES
+# GENERATE SF2 EXCEL - POPULATE EXISTING TEMPLATE
 # -----------------------------
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def generate_sf2_excel(request):
     """
-    Generate SF2 (School Form 2) Excel report with half-triangle images for AM/PM attendance.
+    Generate SF2 (School Form 2) Excel report by populating an existing template.
+    Inserts student names and attendance marks without modifying the template structure.
     
     Request body (JSON):
         - month (optional): month number (1-12), defaults to current month
         - year (optional): year number, defaults to current year
+        - template_file (optional): uploaded SF2 template file
     
     Returns:
-        Excel file with attendance data visualized using half-triangle images
+        Excel file with attendance data populated in the template
     """
     try:
         teacher_profile = TeacherProfile.objects.get(user=request.user)
@@ -637,54 +638,27 @@ def generate_sf2_excel(request):
             date__year=year
         ).order_by('student_name', 'date')
         
-        # Create workbook and worksheet
-        wb = Workbook()
+        # Check if template file is provided in request.FILES
+        template_file = request.FILES.get('template_file')
+        
+        if not template_file:
+            return Response(
+                {"error": "Please upload an SF2 template file"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Load the template workbook
+        wb = load_workbook(template_file)
+        
+        # Get the active worksheet (assuming SF2 is in the first/active sheet)
         ws = wb.active
-        ws.title = f"SF2_{month}_{year}"
-        
-        # Set up main header
-        ws['A1'] = "School Form 2 (SF2) Daily Attendance Report of Learners"
-        ws.merge_cells('A1:AH1')
-        ws['A1'].font = Font(bold=True, size=14)
-        ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
-        
-        # Add school information
-        ws['A2'] = f"School/Section: {teacher_profile.section}"
-        ws['A3'] = f"Month: {datetime(year, month, 1).strftime('%B %Y')}"
-        ws['A4'] = f"Teacher: {teacher_profile.user.first_name or teacher_profile.user.username}"
-        
-        # Style info rows
-        for row in range(2, 5):
-            ws[f'A{row}'].font = Font(bold=True, size=11)
-            ws[f'A{row}'].alignment = Alignment(horizontal='left', vertical='center')
-        
-        # Column headers (starting at row 6)
-        header_row = 6
-        headers = ['No.', 'LRN', 'Name'] + [str(i) for i in range(1, 32)] + ['Total Present', 'Total Absent', 'Total Tardy']
-        
-        for col_num, header in enumerate(headers, 1):
-            cell = ws.cell(row=header_row, column=col_num)
-            cell.value = header
-            cell.font = Font(bold=True, color="FFFFFF", size=10)
-            cell.fill = PatternFill(
-                start_color="4472C4", 
-                end_color="4472C4", 
-                fill_type="solid"
-            )
-            cell.alignment = Alignment(horizontal='center', vertical='center')
-            cell.border = Border(
-                left=Side(style='thin', color='000000'),
-                right=Side(style='thin', color='000000'),
-                top=Side(style='thin', color='000000'),
-                bottom=Side(style='thin', color='000000')
-            )
         
         # Process attendance data by student
         student_data = {}
         
         for att in attendances:
-            # Use LRN and name as unique key
-            key = (att.student_lrn or "", att.student_name)
+            # Use student name as unique key (combine with LRN if needed)
+            key = att.student_name
             
             if key not in student_data:
                 student_data[key] = {
@@ -707,155 +681,124 @@ def generate_sf2_excel(request):
             else:
                 student_data[key]['attendance'][day]['pm'] = status_val
         
-        # Set row height for better image display
-        for row in range(header_row + 1, header_row + len(student_data) + 1):
-            ws.row_dimensions[row].height = 30
+        # Sort students alphabetically
+        sorted_students = sorted(student_data.items(), key=lambda x: x[1]['name'])
         
-        # Set column widths
-        ws.column_dimensions['A'].width = 5   # No.
-        ws.column_dimensions['B'].width = 15  # LRN
-        ws.column_dimensions['C'].width = 30  # Name
+        # Starting row for student data (adjust based on your template - typically row 4 or 5)
+        start_row = 4  # Change this to match your template's first student row
         
-        # Day columns (1-31)
-        for col in range(4, 35):
-            ws.column_dimensions[get_column_letter(col)].width = 5
+        # Column indices (adjust based on your template structure)
+        # Assuming: A=No, B=LRN, C=Name, D-AH=Days 1-31, etc.
+        lrn_col = 2      # Column B
+        name_col = 3     # Column C
+        day_start_col = 4  # Column D (day 1)
         
-        # Total columns
-        ws.column_dimensions[get_column_letter(35)].width = 12  # Total Present
-        ws.column_dimensions[get_column_letter(36)].width = 12  # Total Absent
-        ws.column_dimensions[get_column_letter(37)].width = 12  # Total Tardy
-        
-        # Fill in student rows
-        row_num = header_row + 1
-        
-        for idx, ((lrn, name), data) in enumerate(
-            sorted(student_data.items(), key=lambda x: x[1]['name']), 1
-        ):
-            # Student info columns
-            ws.cell(row=row_num, column=1).value = idx
-            ws.cell(row=row_num, column=2).value = lrn
-            ws.cell(row=row_num, column=3).value = name
+        # Populate student data
+        for idx, (student_name, data) in enumerate(sorted_students):
+            row_num = start_row + idx
             
-            # Style student info cells
-            for col in [1, 2, 3]:
-                cell = ws.cell(row=row_num, column=col)
-                cell.alignment = Alignment(horizontal='left' if col == 3 else 'center', vertical='center')
-                cell.border = Border(
-                    left=Side(style='thin'),
-                    right=Side(style='thin'),
-                    top=Side(style='thin'),
-                    bottom=Side(style='thin')
-                )
+            # Ensure row exists
+            if row_num > ws.max_row:
+                ws.append([])
             
-            # Initialize counters
+            # Insert student number (optional, if template has this)
+            ws.cell(row=row_num, column=1).value = idx + 1
+            
+            # Insert LRN
+            if data['lrn']:
+                ws.cell(row=row_num, column=lrn_col).value = data['lrn']
+            
+            # Insert student name
+            ws.cell(row=row_num, column=name_col).value = data['name']
+            
+            # Initialize counters for totals
             total_present = 0
             total_absent = 0
-            total_tardy = 0
             
             # Fill attendance for each day of the month
             for day in range(1, 32):
-                col = day + 3
+                col = day_start_col + day - 1
                 cell = ws.cell(row=row_num, column=col)
-                cell_ref = f"{get_column_letter(col)}{row_num}"
-                
-                # Apply borders to all cells
-                cell.border = Border(
-                    left=Side(style='thin', color='CCCCCC'),
-                    right=Side(style='thin', color='CCCCCC'),
-                    top=Side(style='thin', color='CCCCCC'),
-                    bottom=Side(style='thin', color='CCCCCC')
-                )
-                cell.alignment = Alignment(horizontal='center', vertical='center')
                 
                 # Check if there's attendance data for this day
                 if day in data['attendance']:
                     am_status = data['attendance'][day]['am']
                     pm_status = data['attendance'][day]['pm']
                     
-                    # Determine if student is absent
-                    is_absent = am_status == 'absent' or pm_status == 'absent'
+                    # Determine attendance marking
+                    is_absent_am = am_status == 'absent'
+                    is_absent_pm = pm_status == 'absent'
                     
-                    # Determine session type for image
-                    if is_absent:
-                        session_type = 'ABSENT'
+                    if is_absent_am and is_absent_pm:
+                        # Full day absent - Red fill with "x"
+                        cell.value = "x"
+                        cell.fill = PatternFill(
+                            start_color="FFB6B6",  # Light red
+                            end_color="FFB6B6",
+                            fill_type="solid"
+                        )
                         total_absent += 1
-                    elif am_status and pm_status:
-                        # Both AM and PM present
-                        session_type = 'BOTH'
-                        total_present += 1
-                    elif am_status:
-                        # Only AM present
-                        session_type = 'AM'
+                    elif is_absent_am or is_absent_pm:
+                        # Half day absent - mark accordingly
+                        if is_absent_am:
+                            cell.fill = PatternFill(
+                                start_color="FFB6B6",
+                                end_color="FFB6B6",
+                                fill_type="solid"
+                            )
+                        else:
+                            cell.fill = PatternFill(
+                                start_color="90EE90",  # Light green
+                                end_color="90EE90",
+                                fill_type="solid"
+                            )
+                        total_absent += 0.5
                         total_present += 0.5
-                    elif pm_status:
-                        # Only PM present
-                        session_type = 'PM'
-                        total_present += 0.5
-                    else:
-                        # No valid attendance
-                        continue
+                    elif am_status or pm_status:
+                        # Present (full or half day)
+                        if am_status and pm_status:
+                            # Full day present - full green fill
+                            cell.fill = PatternFill(
+                                start_color="90EE90",
+                                end_color="90EE90",
+                                fill_type="solid"
+                            )
+                            total_present += 1
+                        elif am_status:
+                            # AM only - half green (bottom)
+                            cell.fill = PatternFill(
+                                start_color="90EE90",
+                                end_color="90EE90",
+                                fill_type="solid"
+                            )
+                            total_present += 0.5
+                        elif pm_status:
+                            # PM only - half green (top)
+                            cell.fill = PatternFill(
+                                start_color="90EE90",
+                                end_color="90EE90",
+                                fill_type="solid"
+                            )
+                            total_present += 0.5
                     
-                    # Check for tardiness (late status)
-                    if am_status == 'late' or pm_status == 'late':
-                        total_tardy += 1
+                    # Add border to marked cells
+                    cell.border = Border(
+                        left=Side(style='thin', color='000000'),
+                        right=Side(style='thin', color='000000'),
+                        top=Side(style='thin', color='000000'),
+                        bottom=Side(style='thin', color='000000')
+                    )
                     
-                    # Create and add triangle image to cell
-                    if session_type == 'ABSENT':
-                        img = create_half_triangle_image('AM', is_absent=True)
-                    else:
-                        img = create_half_triangle_image(session_type, is_absent=False)
-                    
-                    add_image_to_cell(ws, img, cell_ref)
+                    # Center align
+                    cell.alignment = Alignment(horizontal='center', vertical='center')
             
-            # Add totals to the row
-            total_present_cell = ws.cell(row=row_num, column=35)
-            total_present_cell.value = int(total_present)
-            total_present_cell.alignment = Alignment(horizontal='center', vertical='center')
-            total_present_cell.border = Border(
-                left=Side(style='thin'),
-                right=Side(style='thin'),
-                top=Side(style='thin'),
-                bottom=Side(style='thin')
-            )
-            total_present_cell.font = Font(bold=True, color="00B050")
+            # Add total absent and present counts (adjust column indices based on your template)
+            # Assuming columns after day 31 are for totals
+            absent_col = day_start_col + 31  # Adjust as needed
+            present_col = absent_col + 1     # Adjust as needed
             
-            total_absent_cell = ws.cell(row=row_num, column=36)
-            total_absent_cell.value = total_absent
-            total_absent_cell.alignment = Alignment(horizontal='center', vertical='center')
-            total_absent_cell.border = Border(
-                left=Side(style='thin'),
-                right=Side(style='thin'),
-                top=Side(style='thin'),
-                bottom=Side(style='thin')
-            )
-            total_absent_cell.font = Font(bold=True, color="FF0000")
-            
-            total_tardy_cell = ws.cell(row=row_num, column=37)
-            total_tardy_cell.value = total_tardy
-            total_tardy_cell.alignment = Alignment(horizontal='center', vertical='center')
-            total_tardy_cell.border = Border(
-                left=Side(style='thin'),
-                right=Side(style='thin'),
-                top=Side(style='thin'),
-                bottom=Side(style='thin')
-            )
-            total_tardy_cell.font = Font(bold=True, color="FFC107")
-            
-            row_num += 1
-        
-        # Add legend at the bottom
-        legend_row = row_num + 2
-        
-        ws.cell(row=legend_row, column=1).value = "LEGEND:"
-        ws.cell(row=legend_row, column=1).font = Font(bold=True, size=12)
-        
-        ws.cell(row=legend_row + 1, column=1).value = "▼ Bottom-left green triangle = AM Session (Morning)"
-        ws.cell(row=legend_row + 2, column=1).value = "▲ Top-right green triangle = PM Session (Afternoon)"
-        ws.cell(row=legend_row + 3, column=1).value = "■ Full green square = Both AM and PM Sessions"
-        ws.cell(row=legend_row + 4, column=1).value = "A Red background with 'A' = Absent"
-        
-        for i in range(1, 5):
-            ws.cell(row=legend_row + i, column=1).font = Font(size=10)
+            ws.cell(row=row_num, column=absent_col).value = int(total_absent)
+            ws.cell(row=row_num, column=present_col).value = int(total_present)
         
         # Save to buffer
         buffer = io.BytesIO()
@@ -863,7 +806,8 @@ def generate_sf2_excel(request):
         buffer.seek(0)
         
         # Generate filename
-        filename = f"SF2_{teacher_profile.section.replace(' ', '_')}_{month:02d}_{year}.xlsx"
+        month_name = datetime(year, month, 1).strftime('%B')
+        filename = f"SF2_{teacher_profile.section.replace(' ', '_')}_{month_name}_{year}.xlsx"
         
         return FileResponse(
             buffer,
@@ -882,104 +826,6 @@ def generate_sf2_excel(request):
         print(traceback.format_exc())
         return Response(
             {"error": f"Error generating SF2: {str(e)}"}, 
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
-# -----------------------------
-# GENERATE HALF TRIANGLE DEMO EXCEL
-# -----------------------------
-@api_view(['GET'])
-@permission_classes([permissions.AllowAny])
-def generate_half_triangle_demo(request):
-    """
-    Demo endpoint that generates an Excel file showing half-triangle images.
-    Demonstrates the visual appearance of AM/PM/Both/Absent markers.
-    No authentication required - public endpoint for testing.
-    """
-    try:
-        # Create workbook and worksheet
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Half Triangle Demo"
-
-        # Set column widths and row heights
-        ws.column_dimensions['A'].width = 8
-        ws.column_dimensions['B'].width = 35
-        
-        for row in range(2, 7):
-            ws.row_dimensions[row].height = 35
-
-        # Define colors
-        blue_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-
-        # Header row
-        ws["A1"].value = "Example"
-        ws["A1"].fill = blue_fill
-        ws["A1"].font = Font(color="FFFFFF", bold=True, size=12)
-        ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
-        
-        ws["B1"].value = "Description"
-        ws["B1"].fill = blue_fill
-        ws["B1"].font = Font(color="FFFFFF", bold=True, size=12)
-        ws["B1"].alignment = Alignment(horizontal="center", vertical="center")
-
-        # AM triangle example
-        am_img = create_half_triangle_image('AM')
-        add_image_to_cell(ws, am_img, 'A2')
-        ws["B2"].value = "AM Session (Morning) - Bottom-left green triangle"
-        ws["B2"].alignment = Alignment(horizontal="left", vertical="center")
-        ws["B2"].font = Font(size=11)
-
-        # PM triangle example
-        pm_img = create_half_triangle_image('PM')
-        add_image_to_cell(ws, pm_img, 'A3')
-        ws["B3"].value = "PM Session (Afternoon) - Top-right green triangle"
-        ws["B3"].alignment = Alignment(horizontal="left", vertical="center")
-        ws["B3"].font = Font(size=11)
-
-        # Both sessions example
-        both_img = create_half_triangle_image('BOTH')
-        add_image_to_cell(ws, both_img, 'A4')
-        ws["B4"].value = "Both Sessions - Full green square"
-        ws["B4"].alignment = Alignment(horizontal="left", vertical="center")
-        ws["B4"].font = Font(size=11)
-
-        # Absent example
-        absent_img = create_half_triangle_image('AM', is_absent=True)
-        add_image_to_cell(ws, absent_img, 'A5')
-        ws["B5"].value = "Absent - Red background with 'A'"
-        ws["B5"].alignment = Alignment(horizontal="left", vertical="center")
-        ws["B5"].font = Font(size=11)
-
-        # Add borders to all cells
-        for row in range(1, 6):
-            for col in ['A', 'B']:
-                ws[f"{col}{row}"].border = Border(
-                    left=Side(style='thin'),
-                    right=Side(style='thin'),
-                    top=Side(style='thin'),
-                    bottom=Side(style='thin')
-                )
-
-        # Save to BytesIO buffer
-        buffer = io.BytesIO()
-        wb.save(buffer)
-        buffer.seek(0)
-
-        # Return Excel file
-        return FileResponse(
-            buffer, 
-            as_attachment=True, 
-            filename="half_triangle_demo.xlsx",
-            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
-    
-    except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return Response(
-            {"error": f"Error generating demo: {str(e)}"}, 
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
