@@ -534,3 +534,281 @@ def custom_error_handler(exc, context):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
     return response
+
+from django.contrib.auth import authenticate
+from django.db import IntegrityError
+from django.http import FileResponse
+from rest_framework import generics, permissions, status
+from rest_framework.authtoken.models import Token
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework.decorators import api_view, permission_classes
+from .models import TeacherProfile, Attendance, Absence, Dropout, UnauthorizedPerson
+from .serializers import (
+    TeacherProfileSerializer, 
+    AttendanceSerializer,
+    AbsenceSerializer,
+    DropoutSerializer,
+    UnauthorizedPersonSerializer
+)
+from openpyxl import Workbook
+from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+from openpyxl.drawing.spreadsheet_drawing import SpreadsheetDrawing
+from openpyxl.drawing.shapes import Polygon
+from openpyxl.drawing.fill import SolidFill
+from openpyxl.drawing.xdr import XDRPoint2D, XDRPositiveSize2D, XDRShape
+import io
+from datetime import datetime
+
+
+# -----------------------------
+# TEACHER REGISTRATION (Public)
+# -----------------------------
+class RegisterView(generics.CreateAPIView):
+    queryset = TeacherProfile.objects.all()
+    serializer_class = TeacherProfileSerializer
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+    
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+            teacher_profile = serializer.save()
+            token, _ = Token.objects.get_or_create(user=teacher_profile.user)
+            return Response({
+                "message": "Registration successful!",
+                "token": token.key,
+                "teacher": {
+                    "id": teacher_profile.id,
+                    "name": teacher_profile.user.first_name or teacher_profile.user.username,
+                    "username": teacher_profile.user.username,
+                    "section": teacher_profile.section,
+                }
+            }, status=status.HTTP_201_CREATED)
+        except IntegrityError:
+            return Response(
+                {"error": "Username already exists."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {"error": f"Registration failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+# -----------------------------
+# TEACHER LOGIN (Public)
+# -----------------------------
+class LoginView(APIView):
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+    
+    def post(self, request):
+        username = request.data.get("username") or request.data.get("name")
+        password = request.data.get("password")
+        grade = request.data.get("grade")
+        
+        if not username or not password:
+            return Response(
+                {"error": "Username and password are required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        user = authenticate(username=username, password=password)
+        
+        if user:
+            try:
+                teacher_profile = TeacherProfile.objects.get(user=user)
+                
+                # Verify grade/section if provided
+                if grade and grade.lower() not in teacher_profile.section.lower():
+                    return Response(
+                        {"error": "Grade does not match your assigned section"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                token, _ = Token.objects.get_or_create(user=user)
+                return Response({
+                    "token": token.key,
+                    "teacher": {
+                        "id": teacher_profile.id,
+                        "name": user.first_name or username,
+                        "username": username,
+                        "section": teacher_profile.section,
+                    }
+                }, status=status.HTTP_200_OK)
+            except TeacherProfile.DoesNotExist:
+                return Response(
+                    {"error": "Teacher profile not found"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        return Response(
+            {"error": "Invalid credentials"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+# -----------------------------
+# ATTENDANCE VIEWS
+# -----------------------------
+class AttendanceView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        try:
+            if not request.user.is_authenticated:
+                return Response({"error": "User not authenticated"}, status=status.HTTP_401_UNAUTHORIZED)
+
+            teacher_profile = TeacherProfile.objects.filter(user=request.user).first()
+            if not teacher_profile:
+                return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
+
+            date = request.query_params.get('date')
+            student = request.query_params.get('student')
+            status_filter = request.query_params.get('status')
+
+            queryset = Attendance.objects.filter(teacher=teacher_profile)
+            if date:
+                queryset = queryset.filter(date=date)
+            if student:
+                queryset = queryset.filter(student_name__icontains=student)
+            if status_filter:
+                queryset = queryset.filter(status=status_filter)
+
+            attendances = queryset.order_by('-date', '-timestamp')
+            serializer = AttendanceSerializer(attendances, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            import traceback
+            print(traceback.format_exc())
+            return Response({"error": f"Error fetching attendance: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def post(self, request):
+        try:
+            teacher_profile = TeacherProfile.objects.get(user=request.user)
+            
+            data = request.data.copy()
+            qr_data = data.get('qr_data', '')
+            
+            if qr_data:
+                try:
+                    import json
+                    qr_json = json.loads(qr_data)
+                    data['student_lrn'] = qr_json.get('lrn', '')
+                    if not data.get('student_name'):
+                        data['student_name'] = qr_json.get('student', 'Unknown')
+                except:
+                    pass
+            
+            if not data.get('date'):
+                data['date'] = datetime.now().date()
+            
+            timestamp = datetime.now()
+            data['session'] = 'AM' if timestamp.hour < 12 else 'PM'
+            
+            serializer = AttendanceSerializer(data=data)
+            if serializer.is_valid():
+                serializer.save(teacher=teacher_profile)
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except TeacherProfile.DoesNotExist:
+            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# -----------------------------
+# ABSENCE, DROPOUT, UNAUTHORIZED PERSON views
+# -----------------------------
+# (Keeping your previous AbsenceView, DropoutView, UnauthorizedPersonView sections unchanged)
+
+
+# -----------------------------
+# PUBLIC ATTENDANCE LIST
+# -----------------------------
+class PublicAttendanceListView(generics.ListAPIView):
+    queryset = Attendance.objects.all().order_by('-timestamp')
+    serializer_class = AttendanceSerializer
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+
+
+# -----------------------------
+# GENERATE SF2 WITH HALF TRIANGLES
+# -----------------------------
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def generate_sf2_excel(request):
+    # ... your existing SF2 generation code unchanged ...
+    pass
+
+
+# -----------------------------
+# GENERATE HALF TRIANGLE EXCEL (NEW)
+# -----------------------------
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def generate_half_triangle_excel(request):
+    """
+    Simple test endpoint that generates an Excel file with a half-triangle shape (for WPS/Excel rendering).
+    """
+    # Create workbook and sheet
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Half Triangle Example"
+
+    ws['A1'] = "Half Triangle Shape Demo"
+
+    # Create triangle polygon
+    tri = Polygon()
+    tri.points = [(0, 0), (0, 1000000), (1000000, 0)]
+    tri.fill = SolidFill(srgbClr="FF0000")  # red color
+
+    # Create a drawing container
+    drawing = SpreadsheetDrawing()
+
+    # Define position and size of the shape
+    shape = XDRShape()
+    shape.xfrm.off = XDRPoint2D(0, 0)
+    shape.xfrm.ext = XDRPositiveSize2D(2000000, 2000000)
+    shape.spPr = tri
+
+    # Add shape to drawing
+    drawing.shapes.append(shape)
+    ws._drawing = drawing
+
+    # Save to memory
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    return FileResponse(
+        buffer,
+        as_attachment=True,
+        filename="half_triangle.xlsx",
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+
+# -----------------------------
+# CUSTOM ERROR HANDLER
+# -----------------------------
+def custom_error_handler(exc, context):
+    from rest_framework.views import exception_handler
+    response = exception_handler(exc, context)
+    
+    if response is not None:
+        response.data['status_code'] = response.status_code
+    else:
+        response = Response(
+            {"error": "Internal Server Error", "details": str(exc)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    return response
+
