@@ -56,8 +56,8 @@ class AttendanceAdmin(admin.ModelAdmin):
         'student_name', 
         'student_lrn', 
         'date', 
-        'session',  # Changed from 'session_badge' to 'session'
-        'status',   # Changed from 'status_badge' to 'status'
+        'session',
+        'status',
         'get_teacher_name',
         'get_section',
         'timestamp'
@@ -83,7 +83,7 @@ class AttendanceAdmin(admin.ModelAdmin):
     # Make status and session editable directly in the list view
     list_editable = ['status', 'session']
     
-    # Fields to display when viewing/editing an individual record
+    # Fields to display when viewing/editing an individual record - ALL EDITABLE
     fieldsets = (
         ('Student Information', {
             'fields': ('student_name', 'student_lrn')
@@ -97,6 +97,7 @@ class AttendanceAdmin(admin.ModelAdmin):
         }),
     )
     
+    # Make timestamp read-only but everything else editable
     readonly_fields = ['timestamp']
     
     # Show 50 records per page
@@ -114,7 +115,15 @@ class AttendanceAdmin(admin.ModelAdmin):
     get_section.admin_order_field = 'teacher__section'
     
     # Add custom bulk actions
-    actions = ['mark_as_present', 'mark_as_absent', 'mark_as_late', 'mark_as_drop_off', 'mark_as_pick_up', 'mark_as_am', 'mark_as_pm']
+    actions = [
+        'mark_as_present', 
+        'mark_as_absent', 
+        'mark_as_late', 
+        'mark_as_drop_off', 
+        'mark_as_pick_up', 
+        'mark_as_am', 
+        'mark_as_pm'
+    ]
     
     def mark_as_present(self, request, queryset):
         updated = queryset.update(status='Present')
@@ -150,6 +159,11 @@ class AttendanceAdmin(admin.ModelAdmin):
         updated = queryset.update(session='PM')
         self.message_user(request, f'{updated} attendance record(s) set to PM session.')
     mark_as_pm.short_description = '🌇 Set session to PM'
+    
+    # Override to allow editing all fields
+    def get_readonly_fields(self, request, obj=None):
+        # Only timestamp is readonly
+        return ['timestamp']
 
 
 @admin.register(Absence)
