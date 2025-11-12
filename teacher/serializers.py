@@ -32,10 +32,12 @@ class TeacherProfileSerializer(serializers.ModelSerializer):
 
 class AttendanceSerializer(serializers.ModelSerializer):
     teacher_name = serializers.CharField(source='teacher.user.first_name', read_only=True)
+    lrn = serializers.CharField(source='student_lrn', required=False)
     
     class Meta:
         model = Attendance
-        fields = ['id', 'teacher', 'teacher_name', 'student_name', 'date', 'status', 'qr_code_data', 'timestamp']
+        fields = ['id', 'teacher', 'teacher_name', 'student_name', 'student_lrn', 'lrn', 
+                  'date', 'status', 'session', 'qr_code_data', 'timestamp']
         read_only_fields = ['timestamp', 'teacher']
 
 class AbsenceSerializer(serializers.ModelSerializer):
