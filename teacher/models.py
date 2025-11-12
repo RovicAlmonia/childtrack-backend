@@ -17,18 +17,22 @@ class Attendance(models.Model):
         ('Present', 'Present'),
         ('Absent', 'Absent'),
         ('Late', 'Late'),
+        ('Drop-off', 'Drop-off'),
+        ('Pick-up', 'Pick-up'),
     ]
     
     teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='attendances')
     student_name = models.CharField(max_length=100)
+    student_lrn = models.CharField(max_length=50, blank=True, null=True)
     date = models.DateField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Present')
+    session = models.CharField(max_length=10, blank=True, null=True)  # AM or PM
     qr_code_data = models.TextField(blank=True, null=True)
     timestamp = models.DateTimeField(auto_now_add=True)
     
     class Meta:
         ordering = ['-date', '-timestamp']
-        unique_together = ['teacher', 'student_name', 'date']
+        unique_together = ['teacher', 'student_name', 'date', 'session']
     
     def __str__(self):
         return f"{self.student_name} - {self.status} - {self.date}"
