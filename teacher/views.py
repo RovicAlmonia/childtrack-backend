@@ -812,3 +812,43 @@ def custom_error_handler(exc, context):
         )
     return response
 
+# views.py
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from django.http import FileResponse
+from openpyxl import Workbook
+from openpyxl.styles import PatternFill, Alignment, Font
+import io
+
+@api_view(['GET'])
+def generate_half_triangle_excel(request):
+    # Create workbook and worksheet
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Half Triangle Demo"
+
+    # Set column width
+    ws.column_dimensions['A'].width = 20
+
+    # Define red fill
+    red_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
+
+    # Add a half-triangle illusion using Unicode
+    ws["A1"].value = "▲ AM"
+    ws["A1"].fill = red_fill
+    ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
+    ws["A1"].font = Font(color="FFFFFF", bold=True)
+
+    ws["A2"].value = "▼ PM"
+    ws["A2"].fill = red_fill
+    ws["A2"].alignment = Alignment(horizontal="center", vertical="center")
+    ws["A2"].font = Font(color="FFFFFF", bold=True)
+
+    # Save to BytesIO buffer
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    # Return Excel file
+    return FileResponse(buffer, as_attachment=True, filename="half_triangle.xlsx")
+
