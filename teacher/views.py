@@ -1,9 +1,11 @@
 from django.contrib.auth import authenticate
 from django.db import IntegrityError
+from django.http import FileResponse
 from rest_framework import generics, permissions, status
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.decorators import api_view, permission_classes
 from .models import TeacherProfile, Attendance, Absence, Dropout, UnauthorizedPerson
 from .serializers import (
     TeacherProfileSerializer, 
@@ -12,6 +14,11 @@ from .serializers import (
     DropoutSerializer,
     UnauthorizedPersonSerializer
 )
+from openpyxl import Workbook
+from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+import io
+from datetime import datetime
 
 # -----------------------------
 # TEACHER REGISTRATION (Public)
@@ -134,9 +141,46 @@ class AttendanceView(APIView):
 
         except Exception as e:
             import traceback
-            print(traceback.format_exc())  # <-- Add this temporarily to see full error in Render logs
+            print(traceback.format_exc())
             return Response({"error": f"Error fetching attendance: {str(e)}"},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def post(self, request):
+        try:
+            teacher_profile = TeacherProfile.objects.get(user=request.user)
+            
+            # Extract data from request
+            data = request.data.copy()
+            qr_data = data.get('qr_data', '')
+            
+            # Parse QR data if it's JSON
+            if qr_data:
+                try:
+                    import json
+                    qr_json = json.loads(qr_data)
+                    data['student_lrn'] = qr_json.get('lrn', '')
+                    if not data.get('student_name'):
+                        data['student_name'] = qr_json.get('student', 'Unknown')
+                except:
+                    pass
+            
+            # Set date if not provided
+            if not data.get('date'):
+                data['date'] = datetime.now().date()
+            
+            # Determine session (AM/PM)
+            timestamp = datetime.now()
+            data['session'] = 'AM' if timestamp.hour < 12 else 'PM'
+            
+            serializer = AttendanceSerializer(data=data)
+            if serializer.is_valid():
+                serializer.save(teacher=teacher_profile)
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except TeacherProfile.DoesNotExist:
+            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class AttendanceDetailView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -328,6 +372,152 @@ class PublicAttendanceListView(generics.ListAPIView):
     serializer_class = AttendanceSerializer
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
+
+# -----------------------------
+# GENERATE SF2 WITH HALF TRIANGLES
+# -----------------------------
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def generate_sf2_excel(request):
+    """
+    Generate SF2 Excel with half triangles for AM/PM attendance
+    """
+    try:
+        teacher_profile = TeacherProfile.objects.get(user=request.user)
+        
+        # Get attendance records
+        month = request.data.get('month', datetime.now().month)
+        year = request.data.get('year', datetime.now().year)
+        
+        attendances = Attendance.objects.filter(
+            teacher=teacher_profile,
+            date__month=month,
+            date__year=year
+        ).order_by('student_name', 'date')
+        
+        # Create workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = f"SF2_{month}_{year}"
+        
+        # Set up header
+        ws['A1'] = "School Form 2 (SF2) Daily Attendance Report of Learners"
+        ws.merge_cells('A1:AH1')
+        ws['A1'].font = Font(bold=True, size=14)
+        ws['A1'].alignment = Alignment(horizontal='center')
+        
+        # Column headers
+        headers = ['No.', 'LRN', 'Name'] + [str(i) for i in range(1, 32)] + ['Total Present', 'Total Absent']
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=2, column=col_num)
+            cell.value = header
+            cell.font = Font(bold=True)
+            cell.fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+        
+        # Process attendance data
+        student_data = {}
+        for att in attendances:
+            key = (att.student_lrn or "", att.student_name)
+            if key not in student_data:
+                student_data[key] = {
+                    'lrn': att.student_lrn or "",
+                    'name': att.student_name,
+                    'attendance': {}
+                }
+            
+            day = att.date.day
+            session = att.session or ('AM' if att.timestamp.hour < 12 else 'PM')
+            status = att.status.lower()
+            
+            if day not in student_data[key]['attendance']:
+                student_data[key]['attendance'][day] = {'am': None, 'pm': None}
+            
+            if session == 'AM':
+                student_data[key]['attendance'][day]['am'] = status
+            else:
+                student_data[key]['attendance'][day]['pm'] = status
+        
+        # Fill in student rows
+        row_num = 3
+        for idx, ((lrn, name), data) in enumerate(sorted(student_data.items(), key=lambda x: x[1]['name']), 1):
+            ws.cell(row=row_num, column=1).value = idx
+            ws.cell(row=row_num, column=2).value = lrn
+            ws.cell(row=row_num, column=3).value = name
+            
+            total_present = 0
+            total_absent = 0
+            
+            # Fill attendance for each day
+            for day in range(1, 32):
+                col = day + 3
+                cell = ws.cell(row=row_num, column=col)
+                
+                if day in data['attendance']:
+                    am_status = data['attendance'][day]['am']
+                    pm_status = data['attendance'][day]['pm']
+                    
+                    # Handle absent
+                    if am_status == 'absent' or pm_status == 'absent':
+                        cell.value = 'A'
+                        cell.fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
+                        cell.font = Font(color="FFFFFF", bold=True)
+                        total_absent += 1
+                    # Handle present - use triangle symbols
+                    elif am_status or pm_status:
+                        # AM = ▼ (down triangle), PM = ▲ (up triangle)
+                        if am_status and pm_status:
+                            cell.value = "◆"  # Both sessions - full diamond
+                        elif am_status:
+                            cell.value = "▼"  # AM only - down triangle
+                        else:
+                            cell.value = "▲"  # PM only - up triangle
+                        
+                        cell.font = Font(name="Segoe UI Symbol", size=12, color="00B050", bold=True)
+                        cell.fill = PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid")
+                        total_present += 1
+                
+                # Style all cells
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+                cell.border = Border(
+                    left=Side(style='thin'),
+                    right=Side(style='thin'),
+                    top=Side(style='thin'),
+                    bottom=Side(style='thin')
+                )
+            
+            # Add totals
+            ws.cell(row=row_num, column=35).value = total_present
+            ws.cell(row=row_num, column=36).value = total_absent
+            
+            row_num += 1
+        
+        # Adjust column widths
+        ws.column_dimensions['A'].width = 5
+        ws.column_dimensions['B'].width = 15
+        ws.column_dimensions['C'].width = 30
+        for col in range(4, 37):
+            ws.column_dimensions[get_column_letter(col)].width = 4
+        
+        # Save to buffer
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        
+        filename = f"SF2_{teacher_profile.section}_{month}_{year}.xlsx"
+        return FileResponse(
+            buffer,
+            as_attachment=True,
+            filename=filename,
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        
+    except TeacherProfile.DoesNotExist:
+        return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return Response({"error": f"Error generating SF2: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # -----------------------------
 # CUSTOM ERROR HANDLER
