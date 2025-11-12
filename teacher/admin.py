@@ -56,8 +56,8 @@ class AttendanceAdmin(admin.ModelAdmin):
         'student_name', 
         'student_lrn', 
         'date', 
-        'session_badge',
-        'status_badge', 
+        'session',  # Changed from 'session_badge' to 'session'
+        'status',   # Changed from 'status_badge' to 'status'
         'get_teacher_name',
         'get_section',
         'timestamp'
@@ -113,44 +113,8 @@ class AttendanceAdmin(admin.ModelAdmin):
     get_section.short_description = 'Section'
     get_section.admin_order_field = 'teacher__section'
     
-    def status_badge(self, obj):
-        colors = {
-            'Present': '#28a745',
-            'Absent': '#dc3545',
-            'Late': '#ffc107',
-            'Drop-off': '#17a2b8',
-            'Pick-up': '#6c757d',
-        }
-        color = colors.get(obj.status, '#6c757d')
-        return format_html(
-            '<span style="background-color: {}; color: white; padding: 5px 12px; '
-            'border-radius: 4px; font-weight: bold; display: inline-block;">{}</span>',
-            color,
-            obj.status
-        )
-    status_badge.short_description = 'Status'
-    
-    def session_badge(self, obj):
-        if obj.session == 'AM':
-            color = '#ffc107'
-            icon = '🌅'
-        elif obj.session == 'PM':
-            color = '#fd7e14'
-            icon = '🌇'
-        else:
-            color = '#6c757d'
-            icon = '❓'
-        return format_html(
-            '<span style="background-color: {}; color: white; padding: 5px 10px; '
-            'border-radius: 4px; font-weight: bold;">{} {}</span>',
-            color,
-            icon,
-            obj.session or 'N/A'
-        )
-    session_badge.short_description = 'Session'
-    
     # Add custom bulk actions
-    actions = ['mark_as_present', 'mark_as_absent', 'mark_as_late', 'mark_as_am', 'mark_as_pm']
+    actions = ['mark_as_present', 'mark_as_absent', 'mark_as_late', 'mark_as_drop_off', 'mark_as_pick_up', 'mark_as_am', 'mark_as_pm']
     
     def mark_as_present(self, request, queryset):
         updated = queryset.update(status='Present')
@@ -166,6 +130,16 @@ class AttendanceAdmin(admin.ModelAdmin):
         updated = queryset.update(status='Late')
         self.message_user(request, f'{updated} attendance record(s) marked as Late.')
     mark_as_late.short_description = '⏰ Mark selected as Late'
+    
+    def mark_as_drop_off(self, request, queryset):
+        updated = queryset.update(status='Drop-off')
+        self.message_user(request, f'{updated} attendance record(s) marked as Drop-off.')
+    mark_as_drop_off.short_description = '🌅 Mark selected as Drop-off'
+    
+    def mark_as_pick_up(self, request, queryset):
+        updated = queryset.update(status='Pick-up')
+        self.message_user(request, f'{updated} attendance record(s) marked as Pick-up.')
+    mark_as_pick_up.short_description = '🌇 Mark selected as Pick-up'
     
     def mark_as_am(self, request, queryset):
         updated = queryset.update(session='AM')
@@ -277,7 +251,7 @@ class UnauthorizedPersonAdmin(admin.ModelAdmin):
         'age', 
         'student_name', 
         'guardian_name', 
-        'relation_badge',
+        'relation',
         'contact',
         'get_teacher_name',
         'get_section',
@@ -325,22 +299,6 @@ class UnauthorizedPersonAdmin(admin.ModelAdmin):
         return obj.teacher.section
     get_section.short_description = 'Section'
     get_section.admin_order_field = 'teacher__section'
-    
-    def relation_badge(self, obj):
-        colors = {
-            'Parent': '#28a745',
-            'Guardian': '#17a2b8',
-            'Relative': '#ffc107',
-            'Other': '#6c757d',
-        }
-        color = colors.get(obj.relation, '#6c757d')
-        return format_html(
-            '<span style="background-color: {}; color: white; padding: 5px 10px; '
-            'border-radius: 4px; font-weight: bold;">{}</span>',
-            color,
-            obj.relation
-        )
-    relation_badge.short_description = 'Relation'
 
 
 # Customize admin site header and title
