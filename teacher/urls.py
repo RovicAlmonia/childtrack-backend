@@ -24,6 +24,9 @@ urlpatterns = [
     path('attendance/<int:pk>/', AttendanceDetailView.as_view(), name='attendance-detail'),
     path('public/attendance/', PublicAttendanceListView.as_view(), name='public_attendance'),
     
+    # SF2 Generation
+    path('generate-sf2/', generate_sf2_excel, name='generate_sf2'),
+    
     # Absences
     path('absences/', AbsenceView.as_view(), name='absences'),
     path('absences/<int:pk>/', AbsenceDetailView.as_view(), name='absence-detail'),
@@ -35,14 +38,4 @@ urlpatterns = [
     # Unauthorized Persons
     path('unauthorized/', UnauthorizedPersonView.as_view(), name='unauthorized'),
     path('unauthorized/<int:pk>/', UnauthorizedPersonDetailView.as_view(), name='unauthorized-detail'),
-
-     # Authentication
-    path('register/', RegisterView.as_view(), name='register'),
-    path('login/', LoginView.as_view(), name='login'),
-    
-    # Attendance
-    path('attendance/', AttendanceView.as_view(), name='attendance'),
-    path('attendance/<int:pk>/', Attendance
 ]
-
-
