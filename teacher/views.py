@@ -555,16 +555,14 @@ def create_diagonal_line(size=51):
 # -----------------------------
 # GENERATE SF2 EXCEL - ENHANCED VERSION (FIXED)
 # -----------------------------
+# Replace your generate_sf2_excel function in views.py with this simpler version:
+
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def generate_sf2_excel(request):
     """
-    Generate SF2 Excel report with enhanced attendance markers:
-    - Green triangles for AM/PM attendance
-    - Red shading for absences
-    - Diagonal lines for present cells
-    - Support for academic year (June to March)
-    - Matches frontend visual design
+    Generate SF2 Excel report - SIMPLIFIED VERSION
+    Uses Excel fills and borders instead of PIL images for better compatibility
     """
     try:
         teacher_profile = TeacherProfile.objects.get(user=request.user)
@@ -577,8 +575,18 @@ def generate_sf2_excel(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # Get month and year from request
+        month = int(request.POST.get('month', datetime.now().month))
+        year = int(request.POST.get('year', datetime.now().year))
+        
         # Load workbook
-        wb = load_workbook(template_file)
+        try:
+            wb = load_workbook(template_file)
+        except Exception as e:
+            return Response(
+                {"error": f"Invalid Excel template: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         # Month names for sheet navigation
         month_names = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", 
@@ -603,7 +611,7 @@ def generate_sf2_excel(request):
         
         for att in attendances:
             student_key = att.student_lrn or att.student_name
-            month = month_names[att.date.month - 1]
+            month_name = month_names[att.date.month - 1]
             day = att.date.day
             
             # Determine if it's AM or PM
@@ -616,58 +624,57 @@ def generate_sf2_excel(request):
             # Only mark if present (not absent)
             if att.status.lower() not in ['absent']:
                 if session == 'AM':
-                    attendance_data[student_key][month][day]['am'] = True
+                    attendance_data[student_key][month_name][day]['am'] = True
                 else:
-                    attendance_data[student_key][month][day]['pm'] = True
+                    attendance_data[student_key][month_name][day]['pm'] = True
+        
+        # Define fills and borders
+        green_fill = PatternFill(start_color='43A047', end_color='43A047', fill_type='solid')
+        red_fill = PatternFill(start_color='FF7F7F', end_color='FF7F7F', fill_type='solid')
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        diagonal_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin'),
+            diagonal=Side(style='dashed', color='000000'),
+            diagonalUp=True
+        )
         
         # Current date for limiting future dates
         now = datetime.now()
         current_month = month_names[now.month - 1]
         current_day = now.date().day
         
-        # Academic year boundaries
-        ACADEMIC_START = 5  # June (0-indexed)
-        ACADEMIC_END = 2    # March
-        
         # Process each month
-        for month in month_names:
-            if month not in wb.sheetnames:
+        for month_name in month_names:
+            if month_name not in wb.sheetnames:
                 continue
             
-            ws = wb[month]
-            month_index = month_names.index(month)
+            ws = wb[month_name]
+            month_index = month_names.index(month_name)
             
-            # Check if month is within academic year up to current month
-            now_month = now.month - 1
-            is_academic_allowed = False
-            
-            if now_month >= ACADEMIC_START:
-                # June to December
-                is_academic_allowed = ACADEMIC_START <= month_index <= now_month
-            elif now_month <= ACADEMIC_END:
-                # January to March
-                is_academic_allowed = (ACADEMIC_START <= month_index <= 11) or (0 <= month_index <= now_month)
-            else:
-                # April or May - academic year finished
-                is_academic_allowed = (ACADEMIC_START <= month_index <= 11) or (0 <= month_index <= ACADEMIC_END)
-            
-            if not is_academic_allowed:
+            # Skip future months
+            if month_index > now.month - 1:
                 continue
             
-            # Find date header row (row 10 in template)
+            # Find date header row (typically row 10)
             date_header_row = 10
             
             # Find day columns (typically starting from column G = 7)
             day_columns = {}
-            for col_idx in range(7, 38):  # Columns G to AL (7 to 38)
+            for col_idx in range(7, 38):  # Columns G to AL
                 try:
                     cell_value = ws.cell(row=date_header_row, column=col_idx).value
                     if cell_value:
-                        # Try to extract day number
-                        day_str = str(cell_value).strip()
-                        # Handle various formats: "1", "1st", " 1 ", etc.
+                        # Extract day number
                         import re
-                        match = re.match(r'(\d+)', day_str)
+                        match = re.match(r'(\d+)', str(cell_value).strip())
                         if match:
                             day_num = int(match.group(1))
                             if 1 <= day_num <= 31:
@@ -675,19 +682,18 @@ def generate_sf2_excel(request):
                 except:
                     pass
             
-            # Student rows start at 13 for males, 64 for females (per template)
+            # Student rows start at 13
             male_start_row = 13
-            female_start_row = 64
             
-            # Process students (adjust based on gender if available in your model)
+            # Process students
             for idx, (lrn, name) in enumerate(students):
-                row_num = male_start_row + idx  # Adjust if you have gender separation
+                row_num = male_start_row + idx
                 
-                # Add student name in column B
+                # Add student name in column B (adjust column as needed)
                 name_cell = ws.cell(row=row_num, column=2)
                 name_cell.value = name
-                name_cell.alignment = Alignment(vertical='middle', horizontal='left')
-                name_cell.font = Font(color='FF000000', size=10)
+                name_cell.alignment = Alignment(vertical='center', horizontal='left')
+                name_cell.font = Font(color='000000', size=10)
                 
                 student_key = lrn or name
                 
@@ -699,110 +705,38 @@ def generate_sf2_excel(request):
                     col_idx = day_columns[day]
                     
                     # Skip future dates in current month
-                    if month == current_month and day > current_day:
+                    if month_name == current_month and day > current_day:
                         continue
                     
                     cell = ws.cell(row=row_num, column=col_idx)
                     
                     # Get attendance for this day
-                    has_am = attendance_data[student_key][month][day]['am']
-                    has_pm = attendance_data[student_key][month][day]['pm']
+                    has_am = attendance_data[student_key][month_name][day]['am']
+                    has_pm = attendance_data[student_key][month_name][day]['pm']
                     
-                    # Determine if present
-                    is_present = has_am or has_pm
+                    # Set cell properties
+                    cell.alignment = Alignment(horizontal='center', vertical='center')
                     
-                    if is_present:
-                        # Clear any fills
-                        cell.fill = PatternFill(fill_type=None)
-                        cell.alignment = Alignment(vertical='middle', horizontal='center')
+                    if has_am or has_pm:
+                        # Present - green fill with diagonal
+                        cell.fill = green_fill
+                        cell.border = diagonal_border
                         
-                        # Add diagonal border (dashed line going up from bottom-left to top-right)
-                        cell.border = Border(
-                            top=Side(style='thin'),
-                            left=Side(style='thin'),
-                            bottom=Side(style='thin'),
-                            right=Side(style='thin'),
-                            diagonal=Side(style='dashed', color='FF000000'),
-                            diagonalUp=True
-                        )
-                        
-                        # Determine triangle type
+                        # Add marker text
                         if has_am and has_pm:
-                            triangle_type = 'BOTH'
+                            cell.value = "✓✓"  # Both sessions
                         elif has_am:
-                            triangle_type = 'AM'
+                            cell.value = "AM"
                         else:
-                            triangle_type = 'PM'
+                            cell.value = "PM"
                         
-                        # Create and add triangle image
-                        triangle_img = create_triangle_image(triangle_type, size=30)
-                        img_buffer = io.BytesIO()
-                        triangle_img.save(img_buffer, format='PNG')
-                        img_buffer.seek(0)
-                        
-                        excel_img = ExcelImage(img_buffer)
-                        excel_img.width = 30
-                        excel_img.height = 24
-                        
-                        # Position image in cell with offset for better alignment
-                        cell_letter = get_column_letter(col_idx)
-                        cell_address = f"{cell_letter}{row_num}"
-                        
-                        # Adjust anchor position based on triangle type
-                        if triangle_type == 'AM':
-                            # Top-left triangle - nudge slightly down and right
-                            excel_img.anchor = cell_address
-                        elif triangle_type == 'PM':
-                            # Bottom-right triangle - position slightly offset
-                            excel_img.anchor = cell_address
-                        else:
-                            # Full cell - center
-                            excel_img.anchor = cell_address
-                        
-                        ws.add_image(excel_img)
-                        
+                        cell.font = Font(color='FFFFFF', size=8, bold=True)
                     else:
-                        # Mark as absent
+                        # Absent - red fill
                         cell.value = "X"
-                        cell.alignment = Alignment(vertical='middle', horizontal='center')
-                        
-                        # Red fill (matching frontend color)
-                        fill_color = 'FFFF7F7F'
-                        cell.fill = PatternFill(
-                            start_color=fill_color,
-                            end_color=fill_color,
-                            fill_type='solid'
-                        )
-                        
-                        # Match font color to fill to hide X visually
-                        cell.font = Font(color=fill_color)
-                        
-                        # Add border (no diagonal for absent)
-                        cell.border = Border(
-                            top=Side(style='thin'),
-                            left=Side(style='thin'),
-                            bottom=Side(style='thin'),
-                            right=Side(style='thin')
-                        )
-                        
-                        # Add red overlay image for better visibility
-                        try:
-                            absent_img = create_absent_overlay(size=51)
-                            img_buffer = io.BytesIO()
-                            absent_img.save(img_buffer, format='PNG')
-                            img_buffer.seek(0)
-                            
-                            excel_img = ExcelImage(img_buffer)
-                            excel_img.width = 51
-                            excel_img.height = 43
-                            
-                            cell_letter = get_column_letter(col_idx)
-                            cell_address = f"{cell_letter}{row_num}"
-                            excel_img.anchor = cell_address
-                            ws.add_image(excel_img)
-                        except Exception as e:
-                            # If image fails, the cell fill will still show
-                            print(f"Warning: Could not add absent overlay image: {e}")
+                        cell.fill = red_fill
+                        cell.border = thin_border
+                        cell.font = Font(color='FFFFFF', size=10, bold=True)
         
         # Save workbook to buffer
         buffer = io.BytesIO()
@@ -812,12 +746,17 @@ def generate_sf2_excel(request):
         # Generate filename
         filename = f"SF2_Report_{teacher_profile.section.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.xlsx"
         
-        return FileResponse(
+        response = FileResponse(
             buffer,
             as_attachment=True,
             filename=filename,
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
+        
+        # Add Content-Disposition header
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        return response
         
     except TeacherProfile.DoesNotExist:
         return Response(
@@ -826,12 +765,12 @@ def generate_sf2_excel(request):
         )
     except Exception as e:
         import traceback
-        print(traceback.format_exc())
+        error_trace = traceback.format_exc()
+        print("SF2 Generation Error:", error_trace)
         return Response(
             {"error": f"Error generating SF2: {str(e)}"}, 
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
 
 # -----------------------------
 # DEMO ENDPOINT FOR TESTING
