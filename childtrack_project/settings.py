@@ -78,11 +78,12 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'childtrack_project.wsgi.application'
 
+# Database configuration - Updated with new database
 DATABASES = {
     'default': dj_database_url.parse(
         os.getenv(
             'DATABASE_URL',
-            'postgresql://childtrack_reub_user:8HJN1dw8KCskj59fSOV8kZJzLjMo0zz3@dpg-d43ireumcj7s73b4shj0-a/childtrack_reub'
+            'postgresql://childtrack_zvop_user:lr64FZfQNw3YLniFFQBKaN8Y1Q37YM4H@dpg-d4a1057gi27c739ph0sg-a/childtrack_zvop'
         )
     )
 }
