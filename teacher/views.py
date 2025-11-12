@@ -553,7 +553,7 @@ def create_diagonal_line(size=51):
 
 
 # -----------------------------
-# GENERATE SF2 EXCEL - ENHANCED VERSION
+# GENERATE SF2 EXCEL - ENHANCED VERSION (FIXED)
 # -----------------------------
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
