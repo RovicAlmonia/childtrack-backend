@@ -16,6 +16,8 @@ from .views import (
 )
 
 urlpatterns = [
+
+    path('api/half-triangle/', generate_half_triangle_excel, name='half_triangle_excel'),
     # Authentication
     path('register/', RegisterView.as_view(), name='register'),
     path('login/', LoginView.as_view(), name='login'),
@@ -40,4 +42,5 @@ urlpatterns = [
     path('unauthorized/', UnauthorizedPersonView.as_view(), name='unauthorized'),
     path('unauthorized/<int:pk>/', UnauthorizedPersonDetailView.as_view(), name='unauthorized-detail'),
 ]
+
 
