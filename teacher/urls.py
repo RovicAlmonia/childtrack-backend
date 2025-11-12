@@ -45,11 +45,7 @@ urlpatterns = [
     path('unauthorized/', UnauthorizedPersonView.as_view(), name='unauthorized'),
     path('unauthorized/<int:pk>/', UnauthorizedPersonDetailView.as_view(), name='unauthorized-detail'),
 
-    # In your api/urls.py, add these lines:
-    path('test-sf2/', test_sf2_generation, name='test_sf2'),
-    path('generate-simple-sf2/', generate_simple_sf2, name='generate_simple_sf2'),
 
-    
 ]
 
 
