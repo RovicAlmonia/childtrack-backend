@@ -12,6 +12,7 @@ from .views import (
     UnauthorizedPersonDetailView,
     PublicAttendanceListView,
     generate_sf2_excel,
+    generate_half_triangle_excel
 )
 
 urlpatterns = [
@@ -39,3 +40,4 @@ urlpatterns = [
     path('unauthorized/', UnauthorizedPersonView.as_view(), name='unauthorized'),
     path('unauthorized/<int:pk>/', UnauthorizedPersonDetailView.as_view(), name='unauthorized-detail'),
 ]
+
