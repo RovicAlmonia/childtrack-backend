@@ -376,6 +376,8 @@ class PublicAttendanceListView(generics.ListAPIView):
 # Replace the generate_sf2_excel function in views.py with this corrected version
 # Replace the generate_sf2_excel function in views.py with this corrected version
 
+# Replace the generate_sf2_excel function in views.py with this corrected version
+
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def generate_sf2_excel(request):
@@ -510,26 +512,44 @@ def generate_sf2_excel(request):
         month_name = month_names[month - 1]
         print(f"📅 Filling data for: {month_name} {year}")
         
+        # Helper function to safely write to cells (including merged cells)
+        def safe_write_cell(worksheet, cell_ref, value):
+            """Safely write to a cell, handling merged cells"""
+            try:
+                cell = worksheet[cell_ref]
+                # Check if this cell is part of a merged cell range
+                for merged_range in worksheet.merged_cells.ranges:
+                    if cell.coordinate in merged_range:
+                        # Write to the top-left cell of the merged range
+                        min_col, min_row, max_col, max_row = merged_range.bounds
+                        top_left_cell = worksheet.cell(row=min_row, column=min_col)
+                        top_left_cell.value = value
+                        return
+                # If not merged, write directly
+                cell.value = value
+            except Exception as e:
+                print(f"⚠️ Could not write to {cell_ref}: {e}")
+        
         # Fill in template metadata based on SF2 template structure
         # Row 6: School ID (D6), School Year (F6), Month (AI6)
-        ws['D6'] = ""  # School ID - You can add this to teacher profile if needed
-        ws['F6'] = f"{year}-{year+1}"  # School Year (e.g., "2025-2026")
-        ws['AI6'] = month_name  # Month field
+        safe_write_cell(ws, 'D6', "")  # School ID - You can add this to teacher profile if needed
+        safe_write_cell(ws, 'F6', f"{year}-{year+1}")  # School Year (e.g., "2025-2026")
+        safe_write_cell(ws, 'AI6', month_name)  # Month field
         
         # Row 8: Grade Level (L8), Section (AI8)
         # Extract grade from section (e.g., "grade 8 Wonder" -> "8")
         grade_match = re.search(r'grade\s*(\d+)', teacher_profile.section, re.IGNORECASE)
         if grade_match:
-            ws['L8'] = grade_match.group(1)  # Just the grade number
+            safe_write_cell(ws, 'L8', grade_match.group(1))  # Just the grade number
         
         # Extract section name (e.g., "grade 8 Wonder" -> "Wonder")
         section_match = re.search(r'grade\s*\d+\s*(.+)', teacher_profile.section, re.IGNORECASE)
         if section_match:
-            ws['AI8'] = section_match.group(1).strip()  # Section name
+            safe_write_cell(ws, 'AI8', section_match.group(1).strip())  # Section name
         else:
-            ws['AI8'] = teacher_profile.section  # Fallback to full section
+            safe_write_cell(ws, 'AI8', teacher_profile.section)  # Fallback to full section
         
-        print(f"📋 Template filled: Year={year}-{year+1}, Month={month_name}, Grade={ws['L8'].value}, Section={ws['AI8'].value}")
+        print(f"📋 Template filled: Year={year}-{year+1}, Month={month_name}")
         
         # Template Configuration based on SF2 template structure
         # Row 10: "LEARNER'S NAME" header and date headers
