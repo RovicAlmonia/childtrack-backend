@@ -525,14 +525,23 @@ def generate_sf2_excel(request):
         name_column = 3           # Column C for student name
         first_day_column = 4      # Column D where day 1 starts
 
-        # Helper function to check if a cell is part of a merged cell
-        def is_merged_cell(ws, row, col):
-            """Check if a cell is part of a merged cell range"""
+        # Helper function to unmerge and write to a cell
+        def unmerge_and_write(ws, row, col, value, alignment=None):
+            """Unmerge cell if needed and write value"""
             cell = ws.cell(row=row, column=col)
-            for merged_range in ws.merged_cells.ranges:
+            
+            # Check if cell is part of a merged range
+            for merged_range in list(ws.merged_cells.ranges):
                 if cell.coordinate in merged_range:
-                    return True
-            return False
+                    ws.unmerge_cells(str(merged_range))
+                    print(f"    🔓 Unmerged {merged_range}")
+                    break
+            
+            # Now write the value
+            cell.value = value
+            if alignment:
+                cell.alignment = alignment
+            return cell
 
         # Get number of days in the month
         days_in_month = monthrange(year, month)[1]
@@ -542,7 +551,7 @@ def generate_sf2_excel(request):
         day_columns = {}
         from datetime import date
         
-        # FIXED: Start from column D (4) for day 1
+        # FIXED: Start from column D (4) for day 1 - FORCE UNMERGE
         for day in range(1, days_in_month + 1):
             col_idx = first_day_column + (day - 1)  # D=4, E=5, F=6, etc.
             day_columns[day] = col_idx
@@ -551,16 +560,12 @@ def generate_sf2_excel(request):
             current_date = date(year, month, day)
             day_of_week = current_date.weekday()  # 0=Monday, 6=Sunday
             
-            # Fill date in row 11
-            date_cell = ws.cell(row=date_row, column=col_idx)
-            date_cell.value = day
-            date_cell.alignment = center_alignment
+            # Fill date in row 11 - UNMERGE IF NEEDED
+            unmerge_and_write(ws, date_row, col_idx, day, center_alignment)
             
-            # Fill day name in row 12 (Monday to Friday only)
+            # Fill day name in row 12 (Monday to Friday only) - UNMERGE IF NEEDED
             if day_of_week < 5:  # 0-4 = Mon-Fri
-                day_cell = ws.cell(row=day_row, column=col_idx)
-                day_cell.value = day_names[day_of_week]
-                day_cell.alignment = center_alignment
+                unmerge_and_write(ws, day_row, col_idx, day_names[day_of_week], center_alignment)
             
         print(f"📅 Mapped {len(day_columns)} day columns starting at D{date_row}")
         print(f"✓ Filled date header (row {date_row}) and day names (row {day_row})")
@@ -573,11 +578,14 @@ def generate_sf2_excel(request):
                 
                 print(f"  Processing student: {name} at row {row_num}")
                 
-                # Write student name - FORCE WRITE
-                name_cell = ws.cell(row=row_num, column=name_column)
-                name_cell.value = name
-                name_cell.alignment = left_alignment
-                print(f"    ✓ Name written to C{row_num}")
+                # Write student name - FORCE WRITE (skip merged cells)
+                if not is_merged_cell(ws, row_num, name_column):
+                    name_cell = ws.cell(row=row_num, column=name_column)
+                    name_cell.value = name
+                    name_cell.alignment = left_alignment
+                    print(f"    ✓ Name written to C{row_num}")
+                else:
+                    print(f"    ⚠️ Skipped merged cell at C{row_num}")
 
                 # Fill attendance for each day in the month
                 for day in range(1, days_in_month + 1):
@@ -588,6 +596,10 @@ def generate_sf2_excel(request):
                         continue
 
                     try:
+                        # Skip merged cells for attendance data
+                        if is_merged_cell(ws, row_num, col_idx):
+                            continue
+                            
                         # Get the cell for this day
                         cell = ws.cell(row=row_num, column=col_idx)
                         cell.alignment = center_alignment
