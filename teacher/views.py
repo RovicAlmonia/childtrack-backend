@@ -373,6 +373,8 @@ class PublicAttendanceListView(generics.ListAPIView):
 # -----------------------------
 # SF2 EXCEL GENERATION - FIXED VERSION
 # -----------------------------
+# views.py - Complete SF2 Generation Function with All Fixes
+
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def generate_sf2_excel(request):
@@ -381,12 +383,10 @@ def generate_sf2_excel(request):
     Separates students by gender: Boys start at row 14, Girls start at row 36.
     
     Visual Legend:
-    - AM Present (Morning): Green half-triangle (upper left)
-    - PM Present (Afternoon): Green half-triangle (upper right) 
+    - AM Present (Morning): Large green triangle ◤ (upper left, fills cell)
+    - PM Present (Afternoon): Large green triangle ◢ (lower right, fills cell)
     - Full Day Present (AM + PM): Solid green fill
     - Absent: Solid red fill
-    
-    All marks appear ABOVE the diagonal lines in the template.
     
     Request Parameters:
     - template_file: Excel template file (multipart/form-data)
@@ -497,7 +497,6 @@ def generate_sf2_excel(request):
         # Define cell styling
         red_fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
         green_fill = PatternFill(start_color='00FF00', end_color='00FF00', fill_type='solid')
-        green_font = Font(color="00FF00", size=11, bold=True)
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
 
@@ -519,7 +518,7 @@ def generate_sf2_excel(request):
         date_row = 11             # Row 11: Dates (1, 2, 3, ...)
         day_row = 12              # Row 12: Day names (Mon, Tue, Wed, Thu, Fri)
         boys_start_row = 14       # Row 14: First BOYS data row
-        girls_start_row = 36      # Row 36: First GIRLS data row (adjust if needed)
+        girls_start_row = 36      # Row 36: First GIRLS data row
         name_column = 3           # Column C for student name
         first_day_column = 4      # Column D where day 1 starts
 
@@ -559,7 +558,7 @@ def generate_sf2_excel(request):
                 day_cell = ws.cell(row=day_row, column=col_idx)
                 day_cell.value = day_names[day_of_week]
                 day_cell.alignment = center_alignment
-            
+        
         print(f"📅 Mapped {len(day_columns)} day columns (D={first_day_column} to column {first_day_column + days_in_month - 1})")
         print(f"✓ Filled date header (row {date_row}) and day names (row {day_row})")
 
@@ -571,15 +570,21 @@ def generate_sf2_excel(request):
                 
                 print(f"  Processing student: {name} at row {row_num}")
                 
-                # Write student name (check if not merged)
+                # Write student name - FORCE IT by unmerging
                 try:
-                    if not is_merged_cell(ws, row_num, name_column):
-                        name_cell = ws.cell(row=row_num, column=name_column)
-                        name_cell.value = name
-                        name_cell.alignment = left_alignment
-                        print(f"    ✓ Name written to C{row_num}")
-                    else:
-                        print(f"    ⚠️ Skipping merged cell for name at row {row_num}")
+                    name_cell = ws.cell(row=row_num, column=name_column)
+                    cell_coord = name_cell.coordinate
+                    
+                    # Unmerge if this cell is part of a merged range
+                    for merged_range in list(ws.merged_cells.ranges):
+                        if cell_coord in merged_range:
+                            ws.unmerge_cells(str(merged_range))
+                            print(f"    🔓 Unmerged cell at C{row_num}")
+                    
+                    # Now write the name
+                    name_cell.value = name
+                    name_cell.alignment = left_alignment
+                    print(f"    ✓ Name written to C{row_num}")
                 except Exception as e:
                     print(f"    ❌ Error writing name: {e}")
 
@@ -620,16 +625,18 @@ def generate_sf2_excel(request):
                             cell.fill = green_fill
                             filled_count += 1
 
-                        # HALF DAY PRESENT
+                        # HALF DAY PRESENT - Large triangles that fill the cell
                         elif has_am and not has_pm:
-                            # AM only - upper left triangle: ◤
+                            # AM only - upper left triangle: ◤ (scaled to fill cell)
                             cell.value = "◤"
-                            cell.font = green_font
+                            cell.font = Font(color="00FF00", size=60, bold=True)
+                            cell.alignment = Alignment(horizontal='left', vertical='top', wrap_text=False)
                             filled_count += 1
                         elif has_pm and not has_am:
-                            # PM only - lower right triangle: ◢
+                            # PM only - lower right triangle: ◢ (scaled to fill cell)
                             cell.value = "◢"
-                            cell.font = green_font
+                            cell.font = Font(color="00FF00", size=60, bold=True)
+                            cell.alignment = Alignment(horizontal='right', vertical='bottom', wrap_text=False)
                             filled_count += 1
                             
                     except Exception as e:
