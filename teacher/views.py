@@ -15,12 +15,17 @@ from .serializers import (
     DropoutSerializer,
     UnauthorizedPersonSerializer
 )
+from django.http import FileResponse
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
 from openpyxl import load_workbook
-from openpyxl.styles import PatternFill, Alignment, Font
-from datetime import datetime
+from openpyxl.styles import PatternFill, Alignment, Font, Border, Side
+from datetime import datetime, date
 from collections import defaultdict
+from calendar import monthrange
 import io
-import json
 import re
 
 # -----------------------------
@@ -372,222 +377,268 @@ class PublicAttendanceListView(generics.ListAPIView):
 # SF2 EXCEL GENERATION - Fixed Version
 # -----------------------------
 @api_view(['POST'])
-@permission_classes([permissions.IsAuthenticated])
+@permission_classes([IsAuthenticated])
 def generate_sf2_excel(request):
     """
-    Generate SF2 Excel with:
-      - AM (Morning): upper-left green triangle (▲)
-      - PM (Afternoon): lower-right green triangle (▼)
-      - Full Day Present: solid green fill
-      - Absent: solid red fill
+    Generate SF2 Excel Report with full year attendance data
     
-    Request should include:
-      - template_file: uploaded Excel template (FILE)
-      - month: integer 1-12 (optional, defaults to current month)
-      - year: integer (optional, defaults to current year)
+    Marking system:
+    - AM Present: Upper triangle ▲ (green)
+    - PM Present: Lower triangle ▼ (green)
+    - Full Day Present: Solid green fill
+    - Absent: Solid red fill
+    - No data (future dates): Empty cell
+    
+    Request format:
+    - template_file: Excel template file (multipart/form-data)
+    - year: Year to generate report for (optional, defaults to current year)
     """
     try:
+        # Get authenticated teacher profile
         teacher_profile = TeacherProfile.objects.get(user=request.user)
 
         # Get uploaded Excel template
         template_file = request.FILES.get('template_file')
         if not template_file:
             return Response(
-                {"error": "Please upload an SF2 template file."},
+                {"error": "Please upload an SF2 template file (.xlsx)."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Load workbook
+        # Validate file extension
+        if not template_file.name.lower().endswith(('.xlsx', '.xls')):
+            return Response(
+                {"error": "Invalid file format. Please upload an Excel file (.xlsx or .xls)."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Load workbook from uploaded template
         try:
             wb = load_workbook(template_file)
         except Exception as e:
             return Response(
-                {"error": f"Failed to load Excel template: {str(e)}"},
+                {"error": f"Failed to load Excel template: {str(e)}. Ensure the file is a valid Excel file."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Get month and year parameters
+        # Get year parameter (default to current year)
         try:
-            month = int(request.POST.get('month', datetime.now().month))
-            year = int(request.POST.get('year', datetime.now().year))
-        except ValueError:
+            target_year = int(request.POST.get('year', datetime.now().year))
+        except (ValueError, TypeError):
             return Response(
-                {"error": "Invalid month or year parameter"},
+                {"error": "Invalid year parameter. Must be a valid integer."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Validate month
-        if month < 1 or month > 12:
+        # Validate year range
+        current_year = datetime.now().year
+        if target_year < 2020 or target_year > current_year + 1:
             return Response(
-                {"error": "Month must be between 1 and 12"},
+                {"error": f"Year must be between 2020 and {current_year + 1}."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Month names mapping
-        month_names = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", 
-                      "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+        # Month names mapping (must match sheet names in template)
+        MONTH_NAMES = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", 
+                       "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
 
-        # Fetch all attendance records for this teacher
+        # Fetch ALL attendance records for this teacher for the target year
         attendances = Attendance.objects.filter(
             teacher=teacher_profile,
-            date__year=year
-        ).order_by('date', 'timestamp')
+            date__year=target_year
+        ).select_related('teacher').order_by('date', 'timestamp')
 
-        # Prepare attendance dictionary
-        # Structure: attendance_data[student_key][month_name][day] = {'am': bool, 'pm': bool}
-        attendance_data = defaultdict(
-            lambda: defaultdict(
-                lambda: defaultdict(lambda: {'am': False, 'pm': False})
-            )
-        )
-        students_set = set()
+        print(f"Found {attendances.count()} attendance records for year {target_year}")
 
+        # Build attendance data structure
+        # Format: attendance_dict[student_key][month_name][day] = {'am': bool, 'pm': bool}
+        attendance_dict = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: {'am': False, 'pm': False})))
+        
+        # Track all unique students
+        students_map = {}  # student_key -> (lrn, name)
+        
         for att in attendances:
-            # Add student to set
-            students_set.add((att.student_lrn or '', att.student_name))
+            # Use LRN as primary key, fallback to name if no LRN
+            student_key = att.student_lrn.strip() if att.student_lrn else att.student_name.strip()
             
-            # Use LRN as key if available, otherwise use name
-            student_key = att.student_lrn if att.student_lrn else att.student_name
+            # Store student info
+            if student_key not in students_map:
+                students_map[student_key] = (att.student_lrn or '', att.student_name)
             
-            # Get month name
-            month_name = month_names[att.date.month - 1]
+            # Get month name and day
+            month_idx = att.date.month - 1  # 0-based index
+            month_name = MONTH_NAMES[month_idx]
             day = att.date.day
             
-            # Determine session (use the session field if available)
+            # Determine session (prioritize session field, fallback to timestamp)
             if att.session:
-                session = att.session.upper()
+                session = att.session.upper().strip()
             else:
-                # Fallback to timestamp hour if session not set
+                # Use timestamp to determine AM/PM
                 session = 'AM' if att.timestamp.hour < 12 else 'PM'
-
-            # Only mark as present if status is not 'Absent'
-            if att.status and att.status.lower() != 'absent':
+            
+            # Mark attendance ONLY if NOT absent
+            status_lower = att.status.lower()
+            if status_lower not in ['absent', 'absence']:
                 if session == 'AM':
-                    attendance_data[student_key][month_name][day]['am'] = True
+                    attendance_dict[student_key][month_name][day]['am'] = True
                 elif session == 'PM':
-                    attendance_data[student_key][month_name][day]['pm'] = True
+                    attendance_dict[student_key][month_name][day]['pm'] = True
+            
+            print(f"Processed: {student_key} - {month_name} {day} - {session} - {att.status}")
 
-        # Sort students by name
-        students = sorted(list(students_set), key=lambda x: x[1])
+        # Sort students alphabetically by name
+        students_sorted = sorted(students_map.items(), key=lambda x: x[1][1].lower())
+        
+        print(f"Total unique students: {len(students_sorted)}")
 
-        # Current date for limiting future dates
-        now = datetime.now()
-        current_month = month_names[now.month - 1]
-        current_day = now.day
-        current_year = now.year
+        # Define cell styles
+        RED_FILL = PatternFill(start_color='FF6B6B', end_color='FF6B6B', fill_type='solid')
+        GREEN_FILL = PatternFill(start_color='90EE90', end_color='90EE90', fill_type='solid')
+        GREEN_FONT = Font(color="228B22", size=14, bold=True)
+        BORDER_STYLE = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
 
-        # Define fills
-        red_fill = PatternFill(start_color='FF7F7F', end_color='FF7F7F', fill_type='solid')
-        green_fill = PatternFill(start_color='43A047', end_color='43A047', fill_type='solid')
-        green_font = Font(color="43A047", size=11, bold=True)
+        # Current date for filtering future dates
+        today = date.today()
 
         # Process each month sheet
-        for month_name in month_names:
+        for month_idx, month_name in enumerate(MONTH_NAMES, start=1):
             if month_name not in wb.sheetnames:
-                print(f"Warning: Sheet '{month_name}' not found in template")
+                print(f"Warning: Sheet '{month_name}' not found in template. Skipping...")
                 continue
 
             ws = wb[month_name]
-            
-            # Configuration: adjust these values based on your template
-            date_header_row = 10  # Row where dates are displayed (1, 2, 3, ...)
-            start_row = 13        # First row for student data
-            lrn_column = 1        # Column for LRN
-            name_column = 2       # Column for student name
-            first_day_column = 7  # Column where day 1 starts
+            print(f"\nProcessing sheet: {month_name}")
 
-            # Find columns representing each day (1-31)
-            day_columns = {}
-            for col_idx in range(first_day_column, 38):  # Check up to column 38
-                cell_value = ws.cell(row=date_header_row, column=col_idx).value
-                if cell_value:
-                    # Try to extract day number
-                    match = re.match(r'(\d+)', str(cell_value).strip())
-                    if match:
-                        day_num = int(match.group(1))
-                        if 1 <= day_num <= 31:
-                            day_columns[day_num] = col_idx
+            # TEMPLATE CONFIGURATION - ADJUST THESE VALUES TO MATCH YOUR TEMPLATE
+            DATE_HEADER_ROW = 11      # Row where day numbers (1, 2, 3...) are displayed
+            STUDENT_START_ROW = 14    # First row where student data begins
+            LRN_COLUMN = 3           # Column index for LRN
+            NAME_COLUMN = 2           # Column index for student name
+            FIRST_DAY_COLUMN = 4      # Column where day 1 starts
+
+            # Detect day columns by reading the header row
+            day_columns = {}  # day_number -> column_index
+            for col_idx in range(FIRST_DAY_COLUMN, FIRST_DAY_COLUMN + 31):
+                try:
+                    cell_value = ws.cell(row=DATE_HEADER_ROW, column=col_idx).value
+                    if cell_value:
+                        # Extract day number from cell (handles formats like "1", "01", "Day 1", etc.)
+                        match = re.search(r'(\d+)', str(cell_value).strip())
+                        if match:
+                            day_num = int(match.group(1))
+                            if 1 <= day_num <= 31:
+                                day_columns[day_num] = col_idx
+                                print(f"  Detected day {day_num} at column {col_idx}")
+                except Exception as e:
+                    print(f"  Error reading column {col_idx}: {e}")
+                    continue
+
+            if not day_columns:
+                print(f"  WARNING: No day columns detected for {month_name}. Check DATE_HEADER_ROW and FIRST_DAY_COLUMN.")
+                continue
+
+            # Get number of days in this month
+            days_in_month = monthrange(target_year, month_idx)[1]
+            print(f"  Days in {month_name} {target_year}: {days_in_month}")
 
             # Fill student data
-            for idx, (lrn, name) in enumerate(students):
-                row_num = start_row + idx
+            for idx, (student_key, (lrn, name)) in enumerate(students_sorted):
+                row_num = STUDENT_START_ROW + idx
                 
                 # Write student name and LRN
-                ws.cell(row=row_num, column=name_column, value=name)
+                name_cell = ws.cell(row=row_num, column=NAME_COLUMN)
+                name_cell.value = name
+                name_cell.alignment = Alignment(horizontal='left', vertical='center')
+                
                 if lrn:
-                    ws.cell(row=row_num, column=lrn_column, value=lrn)
+                    lrn_cell = ws.cell(row=row_num, column=LRN_COLUMN)
+                    lrn_cell.value = lrn
+                    lrn_cell.alignment = Alignment(horizontal='center', vertical='center')
 
-                student_key = lrn if lrn else name
-
-                # Fill attendance for each day
-                for day, col_idx in day_columns.items():
-                    # Skip future dates
-                    if year == current_year:
-                        if month_name == current_month and day > current_day:
-                            continue
-                        # Skip months in the future
-                        month_idx = month_names.index(month_name) + 1
-                        if month_idx > now.month:
-                            continue
-
-                    cell = ws.cell(row=row_num, column=col_idx)
-                    cell.alignment = Alignment(horizontal='center', vertical='center')
+                # Process each day in the month
+                for day in range(1, days_in_month + 1):
+                    if day not in day_columns:
+                        continue
                     
-                    # Get attendance status
-                    has_am = attendance_data[student_key][month_name][day]['am']
-                    has_pm = attendance_data[student_key][month_name][day]['pm']
-
-                    # Clear previous content
+                    col_idx = day_columns[day]
+                    cell = ws.cell(row=row_num, column=col_idx)
+                    
+                    # Reset cell formatting
                     cell.value = None
-                    cell.fill = PatternFill()  # Remove any existing fill
-                    cell.font = Font()  # Reset font
+                    cell.fill = PatternFill()
+                    cell.font = Font()
+                    cell.alignment = Alignment(horizontal='center', vertical='center')
+                    cell.border = BORDER_STYLE
 
-                    # ABSENT - full red fill (neither AM nor PM present)
-                    if not has_am and not has_pm:
-                        cell.fill = red_fill
+                    # Check if date is in the future
+                    current_date = date(target_year, month_idx, day)
+                    if current_date > today:
+                        # Future date - leave blank
                         continue
 
-                    # FULL DAY PRESENT - solid green fill
+                    # Get attendance status for this day
+                    has_am = attendance_dict[student_key][month_name][day]['am']
+                    has_pm = attendance_dict[student_key][month_name][day]['pm']
+
+                    # MARKING LOGIC
                     if has_am and has_pm:
-                        cell.fill = green_fill
-                        continue
-
-                    # HALF DAY PRESENT - use Unicode triangles
-                    if has_am and not has_pm:
+                        # Full day present - solid green fill
+                        cell.fill = GREEN_FILL
+                    elif has_am and not has_pm:
                         # AM only - upper triangle
                         cell.value = "▲"
-                        cell.font = green_font
+                        cell.font = GREEN_FONT
                     elif has_pm and not has_am:
                         # PM only - lower triangle
                         cell.value = "▼"
-                        cell.font = green_font
+                        cell.font = GREEN_FONT
+                    else:
+                        # Neither AM nor PM - mark as absent (red fill)
+                        cell.fill = RED_FILL
 
-        # Save workbook to BytesIO
+            print(f"  Completed {month_name} with {len(students_sorted)} students")
+
+        # Save workbook to BytesIO buffer
         buffer = io.BytesIO()
         wb.save(buffer)
         buffer.seek(0)
-        
-        # Generate filename
-        filename = f"SF2_Report_{teacher_profile.section.replace(' ', '_')}_{year}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        
+
+        # Generate filename with timestamp
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        section_safe = re.sub(r'[^\w\-_]', '_', teacher_profile.section)
+        filename = f"SF2_Report_{section_safe}_{target_year}_{timestamp}.xlsx"
+
+        print(f"\nGenerated SF2 report: {filename}")
+
+        # Return file as response
         return FileResponse(
             buffer,
             as_attachment=True,
             filename=filename,
-            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            content_type='application/vnd.openxmlformats-officedocket.spreadsheetml.sheet'
         )
 
     except TeacherProfile.DoesNotExist:
         return Response(
-            {"error": "Teacher profile not found."},
+            {"error": "Teacher profile not found. Please ensure you are logged in."},
             status=status.HTTP_404_NOT_FOUND
         )
     except Exception as e:
+        # Log the full error for debugging
         import traceback
         error_trace = traceback.format_exc()
-        print("SF2 Generation Error:")
+        print("=" * 80)
+        print("SF2 GENERATION ERROR:")
         print(error_trace)
+        print("=" * 80)
+        
         return Response(
-            {"error": f"Failed to generate SF2 Excel: {str(e)}"},
+            {"error": f"Failed to generate SF2 report: {str(e)}"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
