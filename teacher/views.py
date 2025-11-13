@@ -16,10 +16,7 @@ from .serializers import (
     UnauthorizedPersonSerializer
 )
 from openpyxl import load_workbook
-from openpyxl.styles import PatternFill, Alignment
-from openpyxl.drawing.spreadsheet_drawing import SpreadsheetDrawing
-from openpyxl.drawing.shapes import Polygon
-from openpyxl.drawing.fill import SolidFill
+from openpyxl.styles import PatternFill, Alignment, Font
 from datetime import datetime
 from collections import defaultdict
 import io
@@ -34,7 +31,7 @@ class RegisterView(generics.CreateAPIView):
     serializer_class = TeacherProfileSerializer
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
-    
+
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         try:
@@ -68,30 +65,30 @@ class RegisterView(generics.CreateAPIView):
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
-    
+
     def post(self, request):
         username = request.data.get("username") or request.data.get("name")
         password = request.data.get("password")
         grade = request.data.get("grade")
-        
+
         if not username or not password:
             return Response(
                 {"error": "Username and password are required"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         user = authenticate(username=username, password=password)
-        
+
         if user:
             try:
                 teacher_profile = TeacherProfile.objects.get(user=user)
-                
+
                 if grade and grade.lower() not in teacher_profile.section.lower():
                     return Response(
                         {"error": "Grade does not match your assigned section"},
                         status=status.HTTP_400_BAD_REQUEST
                     )
-                
+
                 token, _ = Token.objects.get_or_create(user=user)
                 return Response({
                     "token": token.key,
@@ -107,7 +104,7 @@ class LoginView(APIView):
                     {"error": "Teacher profile not found"},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-        
+
         return Response(
             {"error": "Invalid credentials"},
             status=status.HTTP_400_BAD_REQUEST
@@ -149,10 +146,10 @@ class AttendanceView(APIView):
     def post(self, request):
         try:
             teacher_profile = TeacherProfile.objects.get(user=request.user)
-            
+
             data = request.data.copy()
             qr_data = data.get('qr_data', '')
-            
+
             if qr_data:
                 try:
                     qr_json = json.loads(qr_data)
@@ -161,27 +158,28 @@ class AttendanceView(APIView):
                         data['student_name'] = qr_json.get('student', 'Unknown')
                 except json.JSONDecodeError:
                     pass
-            
+
             if not data.get('date'):
                 data['date'] = datetime.now().date()
-            
+
             timestamp = datetime.now()
             data['session'] = 'AM' if timestamp.hour < 12 else 'PM'
-            
+
             serializer = AttendanceSerializer(data=data)
             if serializer.is_valid():
                 serializer.save(teacher=teacher_profile)
                 return Response(serializer.data, status=status.HTTP_201_CREATED)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            
+
         except TeacherProfile.DoesNotExist:
             return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
 class AttendanceDetailView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-    
+
     def put(self, request, pk):
         try:
             teacher_profile = TeacherProfile.objects.get(user=request.user)
@@ -195,7 +193,7 @@ class AttendanceDetailView(APIView):
             return Response({"error": "Attendance record not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
+
     def delete(self, request, pk):
         try:
             teacher_profile = TeacherProfile.objects.get(user=request.user)
@@ -212,7 +210,7 @@ class AttendanceDetailView(APIView):
 # -----------------------------
 class AbsenceView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-    
+
     def get(self, request):
         try:
             teacher_profile = TeacherProfile.objects.get(user=request.user)
@@ -221,7 +219,7 @@ class AbsenceView(APIView):
             return Response(serializer.data)
         except TeacherProfile.DoesNotExist:
             return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
-    
+
     def post(self, request):
         try:
             teacher_profile = TeacherProfile.objects.get(user=request.user)
@@ -266,7 +264,7 @@ class AbsenceDetailView(APIView):
 # -----------------------------
 class DropoutView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-    
+
     def get(self, request):
         try:
             teacher_profile = TeacherProfile.objects.get(user=request.user)
@@ -275,7 +273,7 @@ class DropoutView(APIView):
             return Response(serializer.data)
         except TeacherProfile.DoesNotExist:
             return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
-    
+
     def post(self, request):
         try:
             teacher_profile = TeacherProfile.objects.get(user=request.user)
@@ -289,7 +287,7 @@ class DropoutView(APIView):
 
 class DropoutDetailView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-    
+
     def put(self, request, pk):
         try:
             teacher_profile = TeacherProfile.objects.get(user=request.user)
@@ -301,7 +299,7 @@ class DropoutDetailView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except Dropout.DoesNotExist:
             return Response({"error": "Dropout not found"}, status=status.HTTP_404_NOT_FOUND)
-    
+
     def delete(self, request, pk):
         try:
             teacher_profile = TeacherProfile.objects.get(user=request.user)
@@ -316,7 +314,7 @@ class DropoutDetailView(APIView):
 # -----------------------------
 class UnauthorizedPersonView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-    
+
     def get(self, request):
         try:
             teacher_profile = TeacherProfile.objects.get(user=request.user)
@@ -325,7 +323,7 @@ class UnauthorizedPersonView(APIView):
             return Response(serializer.data)
         except TeacherProfile.DoesNotExist:
             return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
-    
+
     def post(self, request):
         try:
             teacher_profile = TeacherProfile.objects.get(user=request.user)
@@ -339,7 +337,7 @@ class UnauthorizedPersonView(APIView):
 
 class UnauthorizedPersonDetailView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-    
+
     def put(self, request, pk):
         try:
             teacher_profile = TeacherProfile.objects.get(user=request.user)
@@ -351,7 +349,7 @@ class UnauthorizedPersonDetailView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except UnauthorizedPerson.DoesNotExist:
             return Response({"error": "Person not found"}, status=status.HTTP_404_NOT_FOUND)
-    
+
     def delete(self, request, pk):
         try:
             teacher_profile = TeacherProfile.objects.get(user=request.user)
@@ -371,15 +369,15 @@ class PublicAttendanceListView(generics.ListAPIView):
     authentication_classes = []
 
 # -----------------------------
-# SF2 EXCEL GENERATION - TRIANGLE VERSION
+# SF2 EXCEL GENERATION - Unicode Triangle Version
 # -----------------------------
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def generate_sf2_excel(request):
     """
     Generate SF2 Excel with:
-      - AM (Morning): upper-left green triangle
-      - PM (Afternoon): lower-right green triangle
+      - AM (Morning): upper-left green triangle (▲)
+      - PM (Afternoon): lower-right green triangle (▼)
       - Absent: solid red fill
     """
     try:
@@ -445,10 +443,6 @@ def generate_sf2_excel(request):
                         if 1 <= day_num <= 31:
                             day_columns[day_num] = col_idx
 
-            # Create drawing object for this sheet
-            drawing = SpreadsheetDrawing()
-            ws._drawing = drawing
-
             # Iterate over each student
             for idx, (lrn, name) in enumerate(students):
                 row_num = start_row + idx
@@ -468,7 +462,7 @@ def generate_sf2_excel(request):
                     has_am = attendance_data[student_key][month_name][day]['am']
                     has_pm = attendance_data[student_key][month_name][day]['pm']
 
-                    # Clear text
+                    # Clear previous content
                     cell.value = None
 
                     # ABSENT - full red fill
@@ -481,30 +475,16 @@ def generate_sf2_excel(request):
                         cell.fill = PatternFill(start_color='43A047', end_color='43A047', fill_type='solid')
                         continue
 
-                    # Draw half triangles
-                    shape_size = 16  # approximate EMU size
-
-                    if has_am:
-                        # Upper-left green triangle (AM)
-                        am_triangle = Polygon()
-                        am_triangle.points = [
-                            (0, 0),
-                            (shape_size, 0),
-                            (0, shape_size)
-                        ]
-                        am_triangle.fill = SolidFill(srgbClr="43A047")
-                        drawing.shapes.append(am_triangle)
-
-                    if has_pm:
-                        # Lower-right green triangle (PM)
-                        pm_triangle = Polygon()
-                        pm_triangle.points = [
-                            (shape_size, shape_size),
-                            (0, shape_size),
-                            (shape_size, 0)
-                        ]
-                        pm_triangle.fill = SolidFill(srgbClr="43A047")
-                        drawing.shapes.append(pm_triangle)
+                    # HALF DAY PRESENT - use Unicode triangles
+                    if has_am and not has_pm:
+                        cell.value = "▲"
+                        cell.font = Font(color="43A047")
+                    elif has_pm and not has_am:
+                        cell.value = "▼"
+                        cell.font = Font(color="43A047")
+                    elif has_am and has_pm:
+                        cell.value = "▲▼"
+                        cell.font = Font(color="43A047")
 
         # Save workbook to BytesIO
         buffer = io.BytesIO()
