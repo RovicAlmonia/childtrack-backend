@@ -2,13 +2,19 @@ from django.db import models
 from teacher.models import TeacherProfile
 
 class Student(models.Model):
+     GENDER_CHOICES = [
+        ('M', 'Male'),
+        ('F', 'Female'),
+    ]
+    
     lrn = models.CharField(max_length=20, unique=True, primary_key=True)
     name = models.CharField(max_length=100)
+    gender = models.CharField(max_length=1, choices=GENDER_CHOICES, blank=True, null=True)
     grade_level = models.CharField(max_length=20, blank=True, null=True)
     section = models.CharField(max_length=50, blank=True, null=True)
     teacher = models.ForeignKey(
         TeacherProfile, 
-        on_delete=models.CASCADE,  # ✅ Changed from SET_NULL - student belongs to teacher
+        on_delete=models.CASCADE,
         related_name='students'
     )
     created_at = models.DateTimeField(auto_now_add=True)
@@ -21,6 +27,7 @@ class Student(models.Model):
         ordering = ['teacher', 'name']
         verbose_name = "Student"
         verbose_name_plural = "Students"
+
 
 class ParentGuardian(models.Model):
     ROLE_CHOICES = [
@@ -56,3 +63,5 @@ class ParentGuardian(models.Model):
         ordering = ['teacher', 'student', 'role']
         verbose_name = "Parent/Guardian"
         verbose_name_plural = "Parents/Guardians"
+
+
