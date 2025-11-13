@@ -1,8 +1,9 @@
 from django.db import models
 from teacher.models import TeacherProfile
 
+
 class Student(models.Model):
-     GENDER_CHOICES = [
+    GENDER_CHOICES = [
         ('M', 'Male'),
         ('F', 'Female'),
     ]
@@ -43,7 +44,7 @@ class ParentGuardian(models.Model):
     )
     teacher = models.ForeignKey(
         TeacherProfile,
-        on_delete=models.CASCADE,  # ✅ Added - parent/guardian linked to teacher
+        on_delete=models.CASCADE,
         related_name='parents_guardians'
     )
     name = models.CharField(max_length=100)
@@ -51,7 +52,7 @@ class ParentGuardian(models.Model):
     contact_number = models.CharField(max_length=15, blank=True, null=True)
     email = models.EmailField(blank=True, null=True)
     address = models.TextField(blank=True, null=True)
-    qr_code_data = models.TextField()  # JSON string with all info
+    qr_code_data = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -63,5 +64,3 @@ class ParentGuardian(models.Model):
         ordering = ['teacher', 'student', 'role']
         verbose_name = "Parent/Guardian"
         verbose_name_plural = "Parents/Guardians"
-
-
