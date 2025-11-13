@@ -369,7 +369,7 @@ class PublicAttendanceListView(generics.ListAPIView):
     authentication_classes = []
 
 # -----------------------------
-# SF2 EXCEL GENERATION - Unicode Triangle Version
+# SF2 EXCEL GENERATION - Fixed Version
 # -----------------------------
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
@@ -378,124 +378,216 @@ def generate_sf2_excel(request):
     Generate SF2 Excel with:
       - AM (Morning): upper-left green triangle (▲)
       - PM (Afternoon): lower-right green triangle (▼)
+      - Full Day Present: solid green fill
       - Absent: solid red fill
+    
+    Request should include:
+      - template_file: uploaded Excel template (FILE)
+      - month: integer 1-12 (optional, defaults to current month)
+      - year: integer (optional, defaults to current year)
     """
     try:
         teacher_profile = TeacherProfile.objects.get(user=request.user)
 
-        # Uploaded Excel template
+        # Get uploaded Excel template
         template_file = request.FILES.get('template_file')
         if not template_file:
-            return Response({"error": "Please upload an SF2 template file."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Please upload an SF2 template file."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        wb = load_workbook(template_file)
-        month = int(request.POST.get('month', datetime.now().month))
-        year = int(request.POST.get('year', datetime.now().year))
+        # Load workbook
+        try:
+            wb = load_workbook(template_file)
+        except Exception as e:
+            return Response(
+                {"error": f"Failed to load Excel template: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get month and year parameters
+        try:
+            month = int(request.POST.get('month', datetime.now().month))
+            year = int(request.POST.get('year', datetime.now().year))
+        except ValueError:
+            return Response(
+                {"error": "Invalid month or year parameter"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate month
+        if month < 1 or month > 12:
+            return Response(
+                {"error": "Month must be between 1 and 12"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         # Month names mapping
-        month_names = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"]
+        month_names = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", 
+                      "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
 
-        # Attendance data query
-        attendances = Attendance.objects.filter(teacher=teacher_profile).order_by('date', 'timestamp')
+        # Fetch all attendance records for this teacher
+        attendances = Attendance.objects.filter(
+            teacher=teacher_profile,
+            date__year=year
+        ).order_by('date', 'timestamp')
 
         # Prepare attendance dictionary
-        attendance_data = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: {'am': False, 'pm': False})))
+        # Structure: attendance_data[student_key][month_name][day] = {'am': bool, 'pm': bool}
+        attendance_data = defaultdict(
+            lambda: defaultdict(
+                lambda: defaultdict(lambda: {'am': False, 'pm': False})
+            )
+        )
         students_set = set()
 
         for att in attendances:
+            # Add student to set
             students_set.add((att.student_lrn or '', att.student_name))
-            student_key = att.student_lrn or att.student_name
+            
+            # Use LRN as key if available, otherwise use name
+            student_key = att.student_lrn if att.student_lrn else att.student_name
+            
+            # Get month name
             month_name = month_names[att.date.month - 1]
             day = att.date.day
-            session = att.session.upper() if att.session else ('AM' if att.timestamp.hour < 12 else 'PM')
+            
+            # Determine session (use the session field if available)
+            if att.session:
+                session = att.session.upper()
+            else:
+                # Fallback to timestamp hour if session not set
+                session = 'AM' if att.timestamp.hour < 12 else 'PM'
 
-            if att.status.lower() != 'absent':
+            # Only mark as present if status is not 'Absent'
+            if att.status and att.status.lower() != 'absent':
                 if session == 'AM':
                     attendance_data[student_key][month_name][day]['am'] = True
                 elif session == 'PM':
                     attendance_data[student_key][month_name][day]['pm'] = True
 
+        # Sort students by name
         students = sorted(list(students_set), key=lambda x: x[1])
+
+        # Current date for limiting future dates
         now = datetime.now()
         current_month = month_names[now.month - 1]
         current_day = now.day
+        current_year = now.year
 
-        # Red fill for absences
+        # Define fills
         red_fill = PatternFill(start_color='FF7F7F', end_color='FF7F7F', fill_type='solid')
+        green_fill = PatternFill(start_color='43A047', end_color='43A047', fill_type='solid')
+        green_font = Font(color="43A047", size=11, bold=True)
 
         # Process each month sheet
         for month_name in month_names:
             if month_name not in wb.sheetnames:
+                print(f"Warning: Sheet '{month_name}' not found in template")
                 continue
 
             ws = wb[month_name]
-            date_header_row = 10
-            start_row = 13
+            
+            # Configuration: adjust these values based on your template
+            date_header_row = 10  # Row where dates are displayed (1, 2, 3, ...)
+            start_row = 13        # First row for student data
+            lrn_column = 1        # Column for LRN
+            name_column = 2       # Column for student name
+            first_day_column = 7  # Column where day 1 starts
 
-            # Find columns representing each day
+            # Find columns representing each day (1-31)
             day_columns = {}
-            for col_idx in range(7, 38):
+            for col_idx in range(first_day_column, 38):  # Check up to column 38
                 cell_value = ws.cell(row=date_header_row, column=col_idx).value
                 if cell_value:
+                    # Try to extract day number
                     match = re.match(r'(\d+)', str(cell_value).strip())
                     if match:
                         day_num = int(match.group(1))
                         if 1 <= day_num <= 31:
                             day_columns[day_num] = col_idx
 
-            # Iterate over each student
+            # Fill student data
             for idx, (lrn, name) in enumerate(students):
                 row_num = start_row + idx
-                ws.cell(row=row_num, column=2, value=name)
+                
+                # Write student name and LRN
+                ws.cell(row=row_num, column=name_column, value=name)
                 if lrn:
-                    ws.cell(row=row_num, column=1, value=lrn)
+                    ws.cell(row=row_num, column=lrn_column, value=lrn)
 
-                student_key = lrn or name
+                student_key = lrn if lrn else name
 
-                # Iterate over each day column
+                # Fill attendance for each day
                 for day, col_idx in day_columns.items():
-                    if month_name == current_month and day > current_day:
-                        continue  # Skip future dates
+                    # Skip future dates
+                    if year == current_year:
+                        if month_name == current_month and day > current_day:
+                            continue
+                        # Skip months in the future
+                        month_idx = month_names.index(month_name) + 1
+                        if month_idx > now.month:
+                            continue
 
                     cell = ws.cell(row=row_num, column=col_idx)
                     cell.alignment = Alignment(horizontal='center', vertical='center')
+                    
+                    # Get attendance status
                     has_am = attendance_data[student_key][month_name][day]['am']
                     has_pm = attendance_data[student_key][month_name][day]['pm']
 
                     # Clear previous content
                     cell.value = None
+                    cell.fill = PatternFill()  # Remove any existing fill
+                    cell.font = Font()  # Reset font
 
-                    # ABSENT - full red fill
+                    # ABSENT - full red fill (neither AM nor PM present)
                     if not has_am and not has_pm:
                         cell.fill = red_fill
                         continue
 
-                    # FULL DAY PRESENT - full green fill
+                    # FULL DAY PRESENT - solid green fill
                     if has_am and has_pm:
-                        cell.fill = PatternFill(start_color='43A047', end_color='43A047', fill_type='solid')
+                        cell.fill = green_fill
                         continue
 
                     # HALF DAY PRESENT - use Unicode triangles
                     if has_am and not has_pm:
+                        # AM only - upper triangle
                         cell.value = "▲"
-                        cell.font = Font(color="43A047")
+                        cell.font = green_font
                     elif has_pm and not has_am:
+                        # PM only - lower triangle
                         cell.value = "▼"
-                        cell.font = Font(color="43A047")
-                    elif has_am and has_pm:
-                        cell.value = "▲▼"
-                        cell.font = Font(color="43A047")
+                        cell.font = green_font
 
         # Save workbook to BytesIO
         buffer = io.BytesIO()
         wb.save(buffer)
         buffer.seek(0)
-        filename = f"SF2_Report_{teacher_profile.section.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.xlsx"
-        return FileResponse(buffer, as_attachment=True, filename=filename)
+        
+        # Generate filename
+        filename = f"SF2_Report_{teacher_profile.section.replace(' ', '_')}_{year}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        
+        return FileResponse(
+            buffer,
+            as_attachment=True,
+            filename=filename,
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
 
     except TeacherProfile.DoesNotExist:
-        return Response({"error": "Teacher profile not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {"error": "Teacher profile not found."},
+            status=status.HTTP_404_NOT_FOUND
+        )
     except Exception as e:
         import traceback
-        print(traceback.format_exc())
-        return Response({"error": f"Failed to generate SF2 Excel: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        error_trace = traceback.format_exc()
+        print("SF2 Generation Error:")
+        print(error_trace)
+        return Response(
+            {"error": f"Failed to generate SF2 Excel: {str(e)}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
