@@ -514,7 +514,7 @@ def generate_sf2_excel(request):
         date_header_row = 10      # Row where dates (1, 2, 3, ...) are displayed
         boys_start_row = 15       # First row where BOYS data begins
         girls_start_row = 36      # First row where GIRLS data begins
-        name_column = 3           # Column C for student name
+        name_column = 3           # Column C for student name (LEARNER'S NAME)
         first_day_column = 4      # Column D where day 1 starts
 
         # Helper function to check if a cell is part of a merged cell
@@ -526,88 +526,106 @@ def generate_sf2_excel(request):
                     return True
             return False
 
-        # Find all day columns by scanning the date header row
-        day_columns = {}
-        for col_idx in range(first_day_column, 38):  # Check columns up to 38
-            # Skip if this is a merged cell
-            if is_merged_cell(ws, date_header_row, col_idx):
-                continue
-                
-            cell_value = ws.cell(row=date_header_row, column=col_idx).value
-            if cell_value:
-                # Try to extract day number from cell
-                match = re.match(r'(\d+)', str(cell_value).strip())
-                if match:
-                    day_num = int(match.group(1))
-                    if 1 <= day_num <= 31:
-                        day_columns[day_num] = col_idx
+        # Get number of days in the month
+        days_in_month = monthrange(year, month)[1]
+        print(f"📅 Days in {month_name} {year}: {days_in_month}")
 
-        print(f"📅 Found {len(day_columns)} day columns in template")
+        # Instead of trying to detect day columns, use fixed column mapping
+        # Assuming the template has columns D through AH (or similar) for days 1-31
+        # Column D = day 1, Column E = day 2, etc.
+        day_columns = {}
+        for day in range(1, days_in_month + 1):
+            col_idx = first_day_column + (day - 1)
+            day_columns[day] = col_idx
+            
+        print(f"📅 Mapped {len(day_columns)} day columns (D={first_day_column} to column {first_day_column + days_in_month - 1})")
+
+        # Debug: Print first few day column mappings
+        for day in range(1, min(6, days_in_month + 1)):
+            print(f"  Day {day} -> Column {day_columns[day]}")
 
         # Helper function to fill attendance for a list of students
         def fill_student_attendance(students_list, start_row):
+            filled_count = 0
             for idx, name in enumerate(students_list):
                 row_num = start_row + idx
                 
-                # Write student name only if not a merged cell
-                if not is_merged_cell(ws, row_num, name_column):
-                    name_cell = ws.cell(row=row_num, column=name_column)
-                    name_cell.value = name
-                else:
-                    print(f"⚠️ Skipping merged cell at row {row_num}, col {name_column}")
+                print(f"  Processing student: {name} at row {row_num}")
+                
+                # Write student name - check if it's merged first
+                try:
+                    if not is_merged_cell(ws, row_num, name_column):
+                        name_cell = ws.cell(row=row_num, column=name_column)
+                        name_cell.value = name
+                        print(f"    ✓ Name written to C{row_num}")
+                    else:
+                        print(f"    ⚠️ Skipping merged cell for name at row {row_num}, col {name_column}")
+                except Exception as e:
+                    print(f"    ❌ Error writing name: {e}")
 
                 # Fill attendance for each day in the month
-                for day, col_idx in day_columns.items():
+                for day in range(1, days_in_month + 1):
+                    col_idx = day_columns[day]
+                    
                     # Skip future dates only if we're generating for current month/year
                     if year == current_year and month == current_month and day > current_day:
                         continue
 
-                    # Skip if this cell is merged
-                    if is_merged_cell(ws, row_num, col_idx):
-                        print(f"⚠️ Skipping merged cell at row {row_num}, col {col_idx}")
-                        continue
+                    try:
+                        # Skip if this cell is merged
+                        if is_merged_cell(ws, row_num, col_idx):
+                            continue
 
-                    # Get the cell for this day
-                    cell = ws.cell(row=row_num, column=col_idx)
-                    cell.alignment = center_alignment
-                    
-                    # Get attendance status for this day
-                    has_am = attendance_data[name]['days'][day]['am']
-                    has_pm = attendance_data[name]['days'][day]['pm']
+                        # Get the cell for this day
+                        cell = ws.cell(row=row_num, column=col_idx)
+                        cell.alignment = center_alignment
+                        
+                        # Get attendance status for this day
+                        has_am = attendance_data[name]['days'][day]['am']
+                        has_pm = attendance_data[name]['days'][day]['pm']
 
-                    # Clear any existing content
-                    cell.value = None
-                    cell.fill = PatternFill()  # Reset fill
-                    cell.font = Font()         # Reset font
+                        # Clear any existing content
+                        cell.value = None
+                        cell.fill = PatternFill()  # Reset fill
+                        cell.font = Font()         # Reset font
 
-                    # Apply attendance marking logic
-                    # ABSENT - neither AM nor PM present
-                    if not has_am and not has_pm:
-                        cell.fill = red_fill
-                        continue
+                        # Apply attendance marking logic
+                        # ABSENT - neither AM nor PM present
+                        if not has_am and not has_pm:
+                            cell.fill = red_fill
+                            filled_count += 1
 
-                    # FULL DAY PRESENT - both AM and PM
-                    if has_am and has_pm:
-                        cell.fill = green_fill
-                        continue
+                        # FULL DAY PRESENT - both AM and PM
+                        elif has_am and has_pm:
+                            cell.fill = green_fill
+                            filled_count += 1
 
-                    # HALF DAY PRESENT - either AM or PM
-                    if has_am and not has_pm:
-                        # AM only - upper triangle (▲)
-                        cell.value = "▲"
-                        cell.font = green_font
-                    elif has_pm and not has_am:
-                        # PM only - lower triangle (▼)
-                        cell.value = "▼"
-                        cell.font = green_font
+                        # HALF DAY PRESENT - either AM or PM
+                        elif has_am and not has_pm:
+                            # AM only - upper triangle (▲)
+                            cell.value = "▲"
+                            cell.font = green_font
+                            filled_count += 1
+                        elif has_pm and not has_am:
+                            # PM only - lower triangle (▼)
+                            cell.value = "▼"
+                            cell.font = green_font
+                            filled_count += 1
+                            
+                    except Exception as e:
+                        print(f"    ❌ Error filling day {day}: {e}")
+                        
+            return filled_count
 
         # Fill BOYS section (starting at row 15)
-        print(f"👦 Filling boys section starting at row {boys_start_row}")
-        fill_student_attendance(boys, boys_start_row)
+        print(f"\n👦 Filling boys section starting at row {boys_start_row}")
+        boys_filled = fill_student_attendance(boys, boys_start_row)
+        print(f"✓ Filled {boys_filled} cells for boys")
         
         # Fill GIRLS section (starting at row 36)
-        print(f"👧 Filling girls section starting at row {girls_start_row}")
-        fill_student_attendance(girls, girls_start_row)
+        print(f"\n👧 Filling girls section starting at row {girls_start_row}")
+        girls_filled = fill_student_attendance(girls, girls_start_row)
+        print(f"✓ Filled {girls_filled} cells for girls")
 
         # Save the workbook to a BytesIO buffer
         buffer = io.BytesIO()
@@ -617,7 +635,8 @@ def generate_sf2_excel(request):
         # Generate filename with month name
         filename = f"SF2_{month_name}_{year}_{teacher_profile.section.replace(' ', '_')}.xlsx"
         
-        print(f"✅ SF2 generated successfully: {filename}")
+        print(f"\n✅ SF2 generated successfully: {filename}")
+        print(f"📊 Total cells filled: {boys_filled + girls_filled}")
         
         # Return file response
         return FileResponse(
