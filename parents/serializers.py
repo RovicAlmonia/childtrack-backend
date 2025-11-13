@@ -1,4 +1,3 @@
-# serializers.py
 from rest_framework import serializers
 from .models import Student, ParentGuardian
 from teacher.models import TeacherProfile
@@ -8,12 +7,15 @@ class StudentSerializer(serializers.ModelSerializer):
     teacher_name = serializers.CharField(source='teacher.user.username', read_only=True)
     teacher_section = serializers.CharField(source='teacher.section', read_only=True)
     parents_count = serializers.SerializerMethodField()
+    gender_display = serializers.CharField(source='get_gender_display', read_only=True)
 
     class Meta:
         model = Student
         fields = [
             'lrn',
             'name',
+            'gender',
+            'gender_display',
             'grade_level',
             'section',
             'teacher',
@@ -31,6 +33,7 @@ class StudentSerializer(serializers.ModelSerializer):
 class ParentGuardianSerializer(serializers.ModelSerializer):
     student_name = serializers.CharField(source='student.name', read_only=True)
     student_lrn = serializers.CharField(source='student.lrn', read_only=True)
+    student_gender = serializers.CharField(source='student.gender', read_only=True)
     teacher_name = serializers.CharField(source='teacher.user.username', read_only=True)
 
     class Meta:
@@ -40,6 +43,7 @@ class ParentGuardianSerializer(serializers.ModelSerializer):
             'student',
             'student_name',
             'student_lrn',
+            'student_gender',
             'teacher',
             'teacher_name',
             'name',
@@ -61,6 +65,7 @@ class RegistrationSerializer(serializers.Serializer):
     teacher_id = serializers.IntegerField(required=False, allow_null=True)
     lrn = serializers.CharField(max_length=20)
     student_name = serializers.CharField(max_length=100)
+    gender = serializers.ChoiceField(choices=['M', 'F'], required=False, allow_blank=True)
     grade_level = serializers.CharField(max_length=20, required=False, allow_blank=True)
     section = serializers.CharField(max_length=50, required=False, allow_blank=True)
 
@@ -102,6 +107,8 @@ class TeacherStudentsSerializer(serializers.ModelSerializer):
             result.append({
                 'lrn': student.lrn,
                 'name': student.name,
+                'gender': student.gender,
+                'gender_display': student.get_gender_display() if student.gender else None,
                 'grade_level': student.grade_level,
                 'section': student.section,
                 'parents_guardians': ParentGuardianSerializer(parents, many=True).data
