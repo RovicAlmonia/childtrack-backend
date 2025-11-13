@@ -36,7 +36,7 @@ class AttendanceSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Attendance
-        fields = ['id', 'teacher', 'teacher_name', 'student_name', 'student_lrn', 'lrn', 
+        fields = ['id', 'teacher', 'teacher_name', 'student_name', 'student_lrn', 'lrn', 'gender', 
                   'date', 'status', 'session', 'qr_code_data', 'timestamp']
         read_only_fields = ['timestamp', 'teacher']
 
@@ -64,3 +64,4 @@ class UnauthorizedPersonSerializer(serializers.ModelSerializer):
         fields = ['id', 'teacher', 'teacher_name', 'name', 'address', 'age', 'student_name', 
                   'guardian_name', 'relation', 'contact', 'photo', 'timestamp']
         read_only_fields = ['timestamp', 'teacher']
+
