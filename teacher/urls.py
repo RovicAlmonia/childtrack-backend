@@ -27,11 +27,6 @@ urlpatterns = [
     
     # SF2 Report Generation
     path('generate-sf2/', generate_sf2_excel, name='generate_sf2'),
-    path('sf2-demo/', generate_half_triangle_demo, name='sf2_demo'),
-    
-    # Legacy endpoint (kept for backward compatibility)
-    path('api/half-triangle/', generate_half_triangle_demo, name='half_triangle_excel'),
-    
     # Absence management endpoints
     path('absences/', AbsenceView.as_view(), name='absences'),
     path('absences/<int:pk>/', AbsenceDetailView.as_view(), name='absence-detail'),
@@ -46,6 +41,7 @@ urlpatterns = [
 
 
 ]
+
 
 
 
