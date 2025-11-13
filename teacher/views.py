@@ -373,11 +373,13 @@ class PublicAttendanceListView(generics.ListAPIView):
 # -----------------------------
 # SF2 EXCEL GENERATION - Complete Implementation
 # -----------------------------
+# Replace the generate_sf2_excel function in views.py with this corrected version
+
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def generate_sf2_excel(request):
     """
-    Generate SF2 Excel report with attendance data.
+    Generate SF2 Excel report with attendance data for a specific month.
     
     Visual Legend:
     - AM Present (Morning): Upper-left green triangle (▲)
@@ -432,18 +434,20 @@ def generate_sf2_excel(request):
         month_names = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", 
                       "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
 
-        # Fetch all attendance records for this teacher for the entire year
+        # FIXED: Fetch attendance records for the SPECIFIC MONTH only
         attendances = Attendance.objects.filter(
             teacher=teacher_profile,
-            date__year=year
+            date__year=year,
+            date__month=month  # Filter by specific month
         ).order_by('date', 'timestamp')
 
+        print(f"📊 Fetching attendance for: {month_names[month-1]} {year}")
+        print(f"📝 Found {attendances.count()} attendance records")
+
         # Build attendance data structure
-        # attendance_data[student_key][month_name][day] = {'am': bool, 'pm': bool}
+        # attendance_data[student_key][day] = {'am': bool, 'pm': bool}
         attendance_data = defaultdict(
-            lambda: defaultdict(
-                lambda: defaultdict(lambda: {'am': False, 'pm': False})
-            )
+            lambda: defaultdict(lambda: {'am': False, 'pm': False})
         )
         
         # Set to collect all unique students
@@ -457,8 +461,6 @@ def generate_sf2_excel(request):
             # Use LRN as primary key, fallback to name if LRN is empty
             student_key = att.student_lrn if att.student_lrn else att.student_name
             
-            # Get month name from date
-            month_name = month_names[att.date.month - 1]
             day = att.date.day
             
             # Determine session (AM/PM)
@@ -472,18 +474,19 @@ def generate_sf2_excel(request):
             # This means Present, Late, Drop-off, Pick-up all count as present
             if att.status and att.status.lower() != 'absent':
                 if session == 'AM':
-                    attendance_data[student_key][month_name][day]['am'] = True
+                    attendance_data[student_key][day]['am'] = True
                 elif session == 'PM':
-                    attendance_data[student_key][month_name][day]['pm'] = True
+                    attendance_data[student_key][day]['pm'] = True
 
         # Sort students alphabetically by name
         students = sorted(list(students_set), key=lambda x: x[1])
+        print(f"👥 Processing {len(students)} students")
 
         # Current date information (to avoid marking future dates)
         now = datetime.now()
-        current_month_name = month_names[now.month - 1]
         current_day = now.day
         current_year = now.year
+        current_month = now.month
 
         # Define cell styling
         red_fill = PatternFill(start_color='FF7F7F', end_color='FF7F7F', fill_type='solid')
@@ -491,99 +494,100 @@ def generate_sf2_excel(request):
         green_font = Font(color="43A047", size=11, bold=True)
         center_alignment = Alignment(horizontal='center', vertical='center')
 
-        # Process each month sheet in the workbook
-        for month_name in month_names:
-            # Skip if sheet doesn't exist
-            if month_name not in wb.sheetnames:
-                print(f"Warning: Sheet '{month_name}' not found in template")
-                continue
+        # FIXED: Process only the requested month's sheet
+        month_name = month_names[month - 1]
+        
+        if month_name not in wb.sheetnames:
+            return Response(
+                {"error": f"Sheet '{month_name}' not found in template. Available sheets: {wb.sheetnames}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-            ws = wb[month_name]
+        ws = wb[month_name]
+        print(f"📄 Processing sheet: {month_name}")
+        
+        # Template Configuration - Adjust these based on your SF2 template structure
+        date_header_row = 11      # Row where dates (1, 2, 3, ...) are displayed
+        start_row = 14           # First row where student data begins
+        lrn_column = 2            # Column for student LRN
+        name_column = 3           # Column for student name
+        first_day_column = 4      # Column where day 1 starts
+
+        # Find all day columns by scanning the date header row
+        day_columns = {}
+        for col_idx in range(first_day_column, 38):  # Check columns up to 38
+            cell_value = ws.cell(row=date_header_row, column=col_idx).value
+            if cell_value:
+                # Try to extract day number from cell
+                match = re.match(r'(\d+)', str(cell_value).strip())
+                if match:
+                    day_num = int(match.group(1))
+                    if 1 <= day_num <= 31:
+                        day_columns[day_num] = col_idx
+
+        print(f"📅 Found {len(day_columns)} day columns in template")
+
+        # Fill in student attendance data
+        for idx, (lrn, name) in enumerate(students):
+            row_num = start_row + idx
             
-            # Template Configuration - Adjust these based on your SF2 template structure
-            date_header_row = 11      # Row where dates (1, 2, 3, ...) are displayed
-            start_row = 14           # First row where student data begins
-            lrn_column = 2            # Column for student LRN
-            name_column = 3           # Column for student name
-            first_day_column = 4      # Column where day 1 starts
+            # Write student information
+            ws.cell(row=row_num, column=name_column, value=name)
+            if lrn:
+                ws.cell(row=row_num, column=lrn_column, value=lrn)
 
-            # Find all day columns by scanning the date header row
-            day_columns = {}
-            for col_idx in range(first_day_column, 38):  # Check columns up to 38
-                cell_value = ws.cell(row=date_header_row, column=col_idx).value
-                if cell_value:
-                    # Try to extract day number from cell
-                    match = re.match(r'(\d+)', str(cell_value).strip())
-                    if match:
-                        day_num = int(match.group(1))
-                        if 1 <= day_num <= 31:
-                            day_columns[day_num] = col_idx
+            # Use LRN as key if available, otherwise use name
+            student_key = lrn if lrn else name
 
-            # Fill in student attendance data
-            for idx, (lrn, name) in enumerate(students):
-                row_num = start_row + idx
+            # Fill attendance for each day in the month
+            for day, col_idx in day_columns.items():
+                # Skip future dates only if we're generating for current month/year
+                if year == current_year and month == current_month and day > current_day:
+                    continue
+
+                # Get the cell for this day
+                cell = ws.cell(row=row_num, column=col_idx)
+                cell.alignment = center_alignment
                 
-                # Write student information
-                ws.cell(row=row_num, column=name_column, value=name)
-                if lrn:
-                    ws.cell(row=row_num, column=lrn_column, value=lrn)
+                # Get attendance status for this day
+                has_am = attendance_data[student_key][day]['am']
+                has_pm = attendance_data[student_key][day]['pm']
 
-                # Use LRN as key if available, otherwise use name
-                student_key = lrn if lrn else name
+                # Clear any existing content
+                cell.value = None
+                cell.fill = PatternFill()  # Reset fill
+                cell.font = Font()         # Reset font
 
-                # Fill attendance for each day in the month
-                for day, col_idx in day_columns.items():
-                    # Skip future dates
-                    if year == current_year:
-                        # Skip if this is a future month
-                        month_idx = month_names.index(month_name) + 1
-                        if month_idx > now.month:
-                            continue
-                        # Skip if this is current month but future day
-                        if month_name == current_month_name and day > current_day:
-                            continue
+                # Apply attendance marking logic
+                # ABSENT - neither AM nor PM present
+                if not has_am and not has_pm:
+                    cell.fill = red_fill
+                    continue
 
-                    # Get the cell for this day
-                    cell = ws.cell(row=row_num, column=col_idx)
-                    cell.alignment = center_alignment
-                    
-                    # Get attendance status for this day
-                    has_am = attendance_data[student_key][month_name][day]['am']
-                    has_pm = attendance_data[student_key][month_name][day]['pm']
+                # FULL DAY PRESENT - both AM and PM
+                if has_am and has_pm:
+                    cell.fill = green_fill
+                    continue
 
-                    # Clear any existing content
-                    cell.value = None
-                    cell.fill = PatternFill()  # Reset fill
-                    cell.font = Font()         # Reset font
-
-                    # Apply attendance marking logic
-                    # ABSENT - neither AM nor PM present
-                    if not has_am and not has_pm:
-                        cell.fill = red_fill
-                        continue
-
-                    # FULL DAY PRESENT - both AM and PM
-                    if has_am and has_pm:
-                        cell.fill = green_fill
-                        continue
-
-                    # HALF DAY PRESENT - either AM or PM
-                    if has_am and not has_pm:
-                        # AM only - upper triangle (▲)
-                        cell.value = "▲"
-                        cell.font = green_font
-                    elif has_pm and not has_am:
-                        # PM only - lower triangle (▼)
-                        cell.value = "▼"
-                        cell.font = green_font
+                # HALF DAY PRESENT - either AM or PM
+                if has_am and not has_pm:
+                    # AM only - upper triangle (▲)
+                    cell.value = "▲"
+                    cell.font = green_font
+                elif has_pm and not has_am:
+                    # PM only - lower triangle (▼)
+                    cell.value = "▼"
+                    cell.font = green_font
 
         # Save the workbook to a BytesIO buffer
         buffer = io.BytesIO()
         wb.save(buffer)
         buffer.seek(0)
         
-        # Generate filename with teacher section and timestamp
-        filename = f"SF2_Report_{teacher_profile.section.replace(' ', '_')}_{year}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        # Generate filename with month name
+        filename = f"SF2_{month_name}_{year}_{teacher_profile.section.replace(' ', '_')}.xlsx"
+        
+        print(f"✅ SF2 generated successfully: {filename}")
         
         # Return file response
         return FileResponse(
