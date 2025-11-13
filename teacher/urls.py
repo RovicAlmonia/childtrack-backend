@@ -13,7 +13,6 @@ from .views import (
     UnauthorizedPersonDetailView,
     PublicAttendanceListView,
     generate_sf2_excel,
-    generate_half_triangle_demo
 )
 
 urlpatterns = [
@@ -47,6 +46,7 @@ urlpatterns = [
 
 
 ]
+
 
 
 
