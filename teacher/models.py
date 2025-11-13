@@ -21,9 +21,15 @@ class Attendance(models.Model):
         ('Pick-up', 'Pick-up'),
     ]
     
+    GENDER_CHOICES = [
+        ('Male', 'Male'),
+        ('Female', 'Female'),
+    ]
+    
     teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='attendances')
     student_name = models.CharField(max_length=100)
     student_lrn = models.CharField(max_length=50, blank=True, null=True)
+    gender = models.CharField(max_length=10, choices=GENDER_CHOICES, default='Male')  # NEW FIELD
     date = models.DateField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Present')
     session = models.CharField(max_length=10, blank=True, null=True)  # AM or PM
