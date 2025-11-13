@@ -374,7 +374,6 @@ class PublicAttendanceListView(generics.ListAPIView):
 # SF2 EXCEL GENERATION - Complete Implementation
 # -----------------------------
 # Replace the generate_sf2_excel function in views.py with this corrected version
-
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def generate_sf2_excel(request):
@@ -446,7 +445,6 @@ def generate_sf2_excel(request):
         print(f"📝 Found {attendances.count()} attendance records")
 
         # Build attendance data structure
-        # attendance_data[student_name][day] = {'am': bool, 'pm': bool, 'gender': str}
         attendance_data = defaultdict(
             lambda: {'days': defaultdict(lambda: {'am': False, 'pm': False}), 'gender': None}
         )
@@ -498,7 +496,7 @@ def generate_sf2_excel(request):
         green_font = Font(color="43A047", size=11, bold=True)
         center_alignment = Alignment(horizontal='center', vertical='center')
 
-        # Use the actual sheet name from the template
+        # Use the first sheet from the template
         if len(wb.sheetnames) > 0:
             sheet_name = wb.sheetnames[0]
             ws = wb[sheet_name]
@@ -512,10 +510,6 @@ def generate_sf2_excel(request):
         month_name = month_names[month - 1]
         print(f"📅 Filling data for: {month_name} {year}")
         
-        # DON'T write to merged cells - skip the metadata filling
-        # The template will retain its original structure
-        print(f"📋 Skipping metadata fields to avoid merged cell errors")
-        
         # Template Configuration based on SF2 template structure
         date_header_row = 10      # Row where dates (1, 2, 3, ...) are displayed
         boys_start_row = 15       # First row where BOYS data begins
@@ -523,9 +517,22 @@ def generate_sf2_excel(request):
         name_column = 3           # Column C for student name
         first_day_column = 4      # Column D where day 1 starts
 
+        # Helper function to check if a cell is part of a merged cell
+        def is_merged_cell(ws, row, col):
+            """Check if a cell is part of a merged cell range"""
+            cell = ws.cell(row=row, column=col)
+            for merged_range in ws.merged_cells.ranges:
+                if cell.coordinate in merged_range:
+                    return True
+            return False
+
         # Find all day columns by scanning the date header row
         day_columns = {}
         for col_idx in range(first_day_column, 38):  # Check columns up to 38
+            # Skip if this is a merged cell
+            if is_merged_cell(ws, date_header_row, col_idx):
+                continue
+                
             cell_value = ws.cell(row=date_header_row, column=col_idx).value
             if cell_value:
                 # Try to extract day number from cell
@@ -542,13 +549,22 @@ def generate_sf2_excel(request):
             for idx, name in enumerate(students_list):
                 row_num = start_row + idx
                 
-                # Write student name
-                ws.cell(row=row_num, column=name_column, value=name)
+                # Write student name only if not a merged cell
+                if not is_merged_cell(ws, row_num, name_column):
+                    name_cell = ws.cell(row=row_num, column=name_column)
+                    name_cell.value = name
+                else:
+                    print(f"⚠️ Skipping merged cell at row {row_num}, col {name_column}")
 
                 # Fill attendance for each day in the month
                 for day, col_idx in day_columns.items():
                     # Skip future dates only if we're generating for current month/year
                     if year == current_year and month == current_month and day > current_day:
+                        continue
+
+                    # Skip if this cell is merged
+                    if is_merged_cell(ws, row_num, col_idx):
+                        print(f"⚠️ Skipping merged cell at row {row_num}, col {col_idx}")
                         continue
 
                     # Get the cell for this day
