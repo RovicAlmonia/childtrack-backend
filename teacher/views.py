@@ -379,20 +379,15 @@ class PublicAttendanceListView(generics.ListAPIView):
 def generate_sf2_excel(request):
     """
     Generate SF2 Excel report with attendance data for a specific month.
-    Separates students by gender: Boys start at row 14, Girls start at row 36.
+    Separates students by gender: Boys start at row 15, Girls start at row 36.
     
     Visual Legend:
-    - AM Present (Morning): Green half-triangle (upper left)
-    - PM Present (Afternoon): Green half-triangle (upper right) 
+    - AM Present (Morning): Green filled triangle (◣) filling entire cell
+    - PM Present (Afternoon): Green filled triangle (◥) filling entire cell
     - Full Day Present (AM + PM): Solid green fill
     - Absent: Solid red fill
     
-    All marks appear ABOVE the diagonal lines in the template.
-    
-    Request Parameters:
-    - template_file: Excel template file (multipart/form-data)
-    - month: Optional, integer 1-12 (defaults to current month)
-    - year: Optional, integer (defaults to current year)
+    Diagonal lines are removed where attendance is marked.
     """
     try:
         # Get authenticated teacher profile
@@ -498,7 +493,8 @@ def generate_sf2_excel(request):
         # Define cell styling
         red_fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
         green_fill = PatternFill(start_color='00FF00', end_color='00FF00', fill_type='solid')
-        green_font = Font(color="00FF00", size=11, bold=True)
+        # BIGGER triangles with larger font size
+        green_font = Font(color="00FF00", size=20, bold=True)  # Increased from 11 to 20
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
 
@@ -516,22 +512,13 @@ def generate_sf2_excel(request):
         month_name = month_names[month - 1]
         print(f"📅 Filling data for: {month_name} {year}")
         
-        # Template Configuration
+        # Template Configuration - UPDATED BASED ON YOUR REQUIREMENTS
         date_row = 11             # Row 11: Dates (1, 2, 3, ...)
-        day_row = 12              # Row 12: Day names (Mon, Tue, Wed, Thu, Fri)
-        boys_start_row = 14       # Row 14: First BOYS data row
-        girls_start_row = 36      # Row 36: First GIRLS data row (adjust if needed)
+        day_row = 12              # Row 12: Day names (Mon, Tue, Wed, Thu, Fri) - STARTS IN COLUMN D
+        boys_start_row = 15       # Row 15: First BOYS data row (changed from 14)
+        girls_start_row = 36      # Row 36: First GIRLS data row
         name_column = 3           # Column C for student name
         first_day_column = 4      # Column D where day 1 starts
-
-        # Helper function to check if a cell is part of a merged cell
-        def is_merged_cell(ws, row, col):
-            """Check if a cell is part of a merged cell range"""
-            cell = ws.cell(row=row, column=col)
-            for merged_range in ws.merged_cells.ranges:
-                if cell.coordinate in merged_range:
-                    return True
-            return False
 
         # Get number of days in the month
         days_in_month = monthrange(year, month)[1]
@@ -549,22 +536,21 @@ def generate_sf2_excel(request):
             current_date = date(year, month, day)
             day_of_week = current_date.weekday()  # 0=Monday, 6=Sunday
             
-            # Fill date in row 11 (only if not merged)
-            if not is_merged_cell(ws, date_row, col_idx):
-                date_cell = ws.cell(row=date_row, column=col_idx)
-                date_cell.value = day
-                date_cell.alignment = center_alignment
+            # FORCE WRITE date in row 11
+            date_cell = ws.cell(row=date_row, column=col_idx)
+            date_cell.value = day
+            date_cell.alignment = center_alignment
             
-            # Fill day name in row 12 (Monday to Friday only, if not merged)
-            if day_of_week < 5 and not is_merged_cell(ws, day_row, col_idx):  # 0-4 = Mon-Fri
+            # FORCE WRITE day name in row 12 (Monday to Friday only)
+            if day_of_week < 5:  # 0-4 = Mon-Fri
                 day_cell = ws.cell(row=day_row, column=col_idx)
                 day_cell.value = day_names[day_of_week]
                 day_cell.alignment = center_alignment
             
         print(f"📅 Mapped {len(day_columns)} day columns (D={first_day_column} to column {first_day_column + days_in_month - 1})")
-        print(f"✓ Filled date header (row {date_row}) and day names (row {day_row})")
+        print(f"✓ Forced date header (row {date_row}) and day names (row {day_row})")
 
-        # Helper function to fill attendance for a list of students
+        # Helper function to remove diagonal lines and fill attendance
         def fill_student_attendance(students_list, start_row):
             filled_count = 0
             for idx, name in enumerate(students_list):
@@ -572,15 +558,14 @@ def generate_sf2_excel(request):
                 
                 print(f"  Processing student: {name} at row {row_num}")
                 
-                # Write student name (check if not merged)
+                # FORCE WRITE student name
                 try:
-                    if not is_merged_cell(ws, row_num, name_column):
-                        name_cell = ws.cell(row=row_num, column=name_column)
-                        name_cell.value = name
-                        name_cell.alignment = left_alignment
-                        print(f"    ✓ Name written to C{row_num}")
-                    else:
-                        print(f"    ⚠️ Skipping merged cell for name at row {row_num}")
+                    name_cell = ws.cell(row=row_num, column=name_column)
+                    name_cell.value = name
+                    name_cell.alignment = left_alignment
+                    # Remove any fill or border from name cell
+                    name_cell.fill = PatternFill()
+                    print(f"    ✓ Name FORCED to C{row_num}")
                 except Exception as e:
                     print(f"    ❌ Error writing name: {e}")
 
@@ -593,10 +578,6 @@ def generate_sf2_excel(request):
                         continue
 
                     try:
-                        # Skip if merged
-                        if is_merged_cell(ws, row_num, col_idx):
-                            continue
-
                         # Get the cell for this day
                         cell = ws.cell(row=row_num, column=col_idx)
                         cell.alignment = center_alignment
@@ -605,10 +586,11 @@ def generate_sf2_excel(request):
                         has_am = attendance_data[name]['days'][day]['am']
                         has_pm = attendance_data[name]['days'][day]['pm']
 
-                        # Clear existing content
+                        # CLEAR EVERYTHING first (including diagonal lines)
                         cell.value = None
                         cell.fill = PatternFill()
                         cell.font = Font()
+                        cell.border = None  # Remove any borders/diagonal lines
 
                         # Apply attendance marking logic
                         # ABSENT - neither AM nor PM present
@@ -621,16 +603,18 @@ def generate_sf2_excel(request):
                             cell.fill = green_fill
                             filled_count += 1
 
-                        # HALF DAY PRESENT
+                        # HALF DAY PRESENT - BIGGER TRIANGLES
                         elif has_am and not has_pm:
-                            # AM only - upper left triangle: ◤
-                            cell.value = "◤"
-                            cell.font = green_font
+                            # AM only - use LARGER lower-left triangle: ◣
+                            cell.value = "◣"
+                            cell.font = green_font  # Size 20, bold
+                            cell.alignment = center_alignment
                             filled_count += 1
                         elif has_pm and not has_am:
-                            # PM only - lower right triangle: ◢
-                            cell.value = "◢"
-                            cell.font = green_font
+                            # PM only - use LARGER upper-right triangle: ◥
+                            cell.value = "◥"
+                            cell.font = green_font  # Size 20, bold
+                            cell.alignment = center_alignment
                             filled_count += 1
                             
                     except Exception as e:
@@ -638,7 +622,7 @@ def generate_sf2_excel(request):
                         
             return filled_count
 
-        # Fill BOYS section (starting at row 14)
+        # Fill BOYS section (starting at row 15)
         print(f"\n👦 Filling boys section starting at row {boys_start_row}")
         boys_filled = fill_student_attendance(boys, boys_start_row)
         print(f"✓ Filled {boys_filled} cells for boys")
