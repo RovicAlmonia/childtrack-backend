@@ -374,6 +374,7 @@ class PublicAttendanceListView(generics.ListAPIView):
 # SF2 EXCEL GENERATION - Complete Implementation
 # -----------------------------
 # Replace the generate_sf2_excel function in views.py with this corrected version
+# Replace the generate_sf2_excel function in views.py with this corrected version
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
@@ -494,24 +495,49 @@ def generate_sf2_excel(request):
         green_font = Font(color="43A047", size=11, bold=True)
         center_alignment = Alignment(horizontal='center', vertical='center')
 
-        # FIXED: Process only the requested month's sheet
-        month_name = month_names[month - 1]
-        
-        if month_name not in wb.sheetnames:
+        # FIXED: Use the actual sheet name from the template
+        # Most SF2 templates have a single sheet, not separate monthly sheets
+        if len(wb.sheetnames) > 0:
+            sheet_name = wb.sheetnames[0]  # Use the first sheet
+            ws = wb[sheet_name]
+            print(f"📄 Processing sheet: {sheet_name}")
+        else:
             return Response(
-                {"error": f"Sheet '{month_name}' not found in template. Available sheets: {wb.sheetnames}"},
+                {"error": "No sheets found in template"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-
-        ws = wb[month_name]
-        print(f"📄 Processing sheet: {month_name}")
         
-        # Template Configuration - Adjust these based on your SF2 template structure
-        date_header_row = 11      # Row where dates (1, 2, 3, ...) are displayed
-        start_row = 14           # First row where student data begins
-        lrn_column = 2            # Column for student LRN
-        name_column = 3           # Column for student name
-        first_day_column = 4      # Column where day 1 starts
+        month_name = month_names[month - 1]
+        print(f"📅 Filling data for: {month_name} {year}")
+        
+        # Fill in template metadata based on SF2 template structure
+        # Row 6: School ID (D6), School Year (F6), Month (AI6)
+        ws['D6'] = ""  # School ID - You can add this to teacher profile if needed
+        ws['F6'] = f"{year}-{year+1}"  # School Year (e.g., "2025-2026")
+        ws['AI6'] = month_name  # Month field
+        
+        # Row 8: Grade Level (L8), Section (AI8)
+        # Extract grade from section (e.g., "grade 8 Wonder" -> "8")
+        grade_match = re.search(r'grade\s*(\d+)', teacher_profile.section, re.IGNORECASE)
+        if grade_match:
+            ws['L8'] = grade_match.group(1)  # Just the grade number
+        
+        # Extract section name (e.g., "grade 8 Wonder" -> "Wonder")
+        section_match = re.search(r'grade\s*\d+\s*(.+)', teacher_profile.section, re.IGNORECASE)
+        if section_match:
+            ws['AI8'] = section_match.group(1).strip()  # Section name
+        else:
+            ws['AI8'] = teacher_profile.section  # Fallback to full section
+        
+        print(f"📋 Template filled: Year={year}-{year+1}, Month={month_name}, Grade={ws['L8'].value}, Section={ws['AI8'].value}")
+        
+        # Template Configuration based on SF2 template structure
+        # Row 10: "LEARNER'S NAME" header and date headers
+        # Row 11: "(Last Name, First Name, Middle Name)" subheader
+        date_header_row = 10      # Row where dates (1, 2, 3, ...) are displayed
+        start_row = 15            # First row where student data begins (row 15 in template)
+        name_column = 3           # Column C for student name (Last Name, First Name, Middle)
+        first_day_column = 4      # Column D where day 1 starts
 
         # Find all day columns by scanning the date header row
         day_columns = {}
@@ -531,10 +557,9 @@ def generate_sf2_excel(request):
         for idx, (lrn, name) in enumerate(students):
             row_num = start_row + idx
             
-            # Write student information
+            # Write student name in "Last Name, First Name, Middle Name" format
+            # The template expects full name in column C
             ws.cell(row=row_num, column=name_column, value=name)
-            if lrn:
-                ws.cell(row=row_num, column=lrn_column, value=lrn)
 
             # Use LRN as key if available, otherwise use name
             student_key = lrn if lrn else name
