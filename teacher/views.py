@@ -374,15 +374,13 @@ class PublicAttendanceListView(generics.ListAPIView):
 # SF2 EXCEL GENERATION - Complete Implementation
 # -----------------------------
 # Replace the generate_sf2_excel function in views.py with this corrected version
-# Replace the generate_sf2_excel function in views.py with this corrected version
-
-# Replace the generate_sf2_excel function in views.py with this corrected version
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def generate_sf2_excel(request):
     """
     Generate SF2 Excel report with attendance data for a specific month.
+    Separates students by gender: Boys start at row 15, Girls start at row 36.
     
     Visual Legend:
     - AM Present (Morning): Upper-left green triangle (▲)
@@ -437,53 +435,56 @@ def generate_sf2_excel(request):
         month_names = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", 
                       "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
 
-        # FIXED: Fetch attendance records for the SPECIFIC MONTH only
+        # Fetch attendance records for the SPECIFIC MONTH only
         attendances = Attendance.objects.filter(
             teacher=teacher_profile,
             date__year=year,
-            date__month=month  # Filter by specific month
+            date__month=month
         ).order_by('date', 'timestamp')
 
         print(f"📊 Fetching attendance for: {month_names[month-1]} {year}")
         print(f"📝 Found {attendances.count()} attendance records")
 
         # Build attendance data structure
-        # attendance_data[student_key][day] = {'am': bool, 'pm': bool}
+        # attendance_data[student_name][day] = {'am': bool, 'pm': bool, 'gender': str}
         attendance_data = defaultdict(
-            lambda: defaultdict(lambda: {'am': False, 'pm': False})
+            lambda: {'days': defaultdict(lambda: {'am': False, 'pm': False}), 'gender': None}
         )
         
-        # Set to collect all unique students
-        students_set = set()
+        # Set to collect all unique students with gender
+        students_dict = {}  # {name: gender}
 
         # Process each attendance record
         for att in attendances:
-            # Add student to the set (LRN, Name)
-            students_set.add((att.student_lrn or '', att.student_name))
-            
-            # Use LRN as primary key, fallback to name if LRN is empty
-            student_key = att.student_lrn if att.student_lrn else att.student_name
-            
+            student_name = att.student_name
             day = att.date.day
+            
+            # Store student gender if we don't have it yet
+            if student_name not in students_dict:
+                students_dict[student_name] = att.gender if hasattr(att, 'gender') and att.gender else 'Male'
             
             # Determine session (AM/PM)
             if att.session:
                 session = att.session.upper()
             else:
-                # Fallback to timestamp hour if session field is not set
                 session = 'AM' if att.timestamp.hour < 12 else 'PM'
 
             # Mark attendance only if status is NOT 'Absent'
-            # This means Present, Late, Drop-off, Pick-up all count as present
             if att.status and att.status.lower() != 'absent':
                 if session == 'AM':
-                    attendance_data[student_key][day]['am'] = True
+                    attendance_data[student_name]['days'][day]['am'] = True
                 elif session == 'PM':
-                    attendance_data[student_key][day]['pm'] = True
+                    attendance_data[student_name]['days'][day]['pm'] = True
+            
+            # Store gender
+            attendance_data[student_name]['gender'] = students_dict[student_name]
 
-        # Sort students alphabetically by name
-        students = sorted(list(students_set), key=lambda x: x[1])
-        print(f"👥 Processing {len(students)} students")
+        # Separate students by gender and sort alphabetically
+        boys = sorted([name for name, gender in students_dict.items() if gender and gender.lower() == 'male'])
+        girls = sorted([name for name, gender in students_dict.items() if gender and gender.lower() == 'female'])
+        
+        print(f"👦 Boys: {len(boys)} students")
+        print(f"👧 Girls: {len(girls)} students")
 
         # Current date information (to avoid marking future dates)
         now = datetime.now()
@@ -497,10 +498,9 @@ def generate_sf2_excel(request):
         green_font = Font(color="43A047", size=11, bold=True)
         center_alignment = Alignment(horizontal='center', vertical='center')
 
-        # FIXED: Use the actual sheet name from the template
-        # Most SF2 templates have a single sheet, not separate monthly sheets
+        # Use the actual sheet name from the template
         if len(wb.sheetnames) > 0:
-            sheet_name = wb.sheetnames[0]  # Use the first sheet
+            sheet_name = wb.sheetnames[0]
             ws = wb[sheet_name]
             print(f"📄 Processing sheet: {sheet_name}")
         else:
@@ -512,51 +512,15 @@ def generate_sf2_excel(request):
         month_name = month_names[month - 1]
         print(f"📅 Filling data for: {month_name} {year}")
         
-        # Helper function to safely write to cells (including merged cells)
-        def safe_write_cell(worksheet, cell_ref, value):
-            """Safely write to a cell, handling merged cells"""
-            try:
-                cell = worksheet[cell_ref]
-                # Check if this cell is part of a merged cell range
-                for merged_range in worksheet.merged_cells.ranges:
-                    if cell.coordinate in merged_range:
-                        # Write to the top-left cell of the merged range
-                        min_col, min_row, max_col, max_row = merged_range.bounds
-                        top_left_cell = worksheet.cell(row=min_row, column=min_col)
-                        top_left_cell.value = value
-                        return
-                # If not merged, write directly
-                cell.value = value
-            except Exception as e:
-                print(f"⚠️ Could not write to {cell_ref}: {e}")
-        
-        # Fill in template metadata based on SF2 template structure
-        # Row 6: School ID (D6), School Year (F6), Month (AI6)
-        safe_write_cell(ws, 'D6', "")  # School ID - You can add this to teacher profile if needed
-        safe_write_cell(ws, 'F6', f"{year}-{year+1}")  # School Year (e.g., "2025-2026")
-        safe_write_cell(ws, 'AI6', month_name)  # Month field
-        
-        # Row 8: Grade Level (L8), Section (AI8)
-        # Extract grade from section (e.g., "grade 8 Wonder" -> "8")
-        grade_match = re.search(r'grade\s*(\d+)', teacher_profile.section, re.IGNORECASE)
-        if grade_match:
-            safe_write_cell(ws, 'L8', grade_match.group(1))  # Just the grade number
-        
-        # Extract section name (e.g., "grade 8 Wonder" -> "Wonder")
-        section_match = re.search(r'grade\s*\d+\s*(.+)', teacher_profile.section, re.IGNORECASE)
-        if section_match:
-            safe_write_cell(ws, 'AI8', section_match.group(1).strip())  # Section name
-        else:
-            safe_write_cell(ws, 'AI8', teacher_profile.section)  # Fallback to full section
-        
-        print(f"📋 Template filled: Year={year}-{year+1}, Month={month_name}")
+        # DON'T write to merged cells - skip the metadata filling
+        # The template will retain its original structure
+        print(f"📋 Skipping metadata fields to avoid merged cell errors")
         
         # Template Configuration based on SF2 template structure
-        # Row 10: "LEARNER'S NAME" header and date headers
-        # Row 11: "(Last Name, First Name, Middle Name)" subheader
         date_header_row = 10      # Row where dates (1, 2, 3, ...) are displayed
-        start_row = 15            # First row where student data begins (row 15 in template)
-        name_column = 3           # Column C for student name (Last Name, First Name, Middle)
+        boys_start_row = 15       # First row where BOYS data begins
+        girls_start_row = 36      # First row where GIRLS data begins
+        name_column = 3           # Column C for student name
         first_day_column = 4      # Column D where day 1 starts
 
         # Find all day columns by scanning the date header row
@@ -573,56 +537,61 @@ def generate_sf2_excel(request):
 
         print(f"📅 Found {len(day_columns)} day columns in template")
 
-        # Fill in student attendance data
-        for idx, (lrn, name) in enumerate(students):
-            row_num = start_row + idx
-            
-            # Write student name in "Last Name, First Name, Middle Name" format
-            # The template expects full name in column C
-            ws.cell(row=row_num, column=name_column, value=name)
-
-            # Use LRN as key if available, otherwise use name
-            student_key = lrn if lrn else name
-
-            # Fill attendance for each day in the month
-            for day, col_idx in day_columns.items():
-                # Skip future dates only if we're generating for current month/year
-                if year == current_year and month == current_month and day > current_day:
-                    continue
-
-                # Get the cell for this day
-                cell = ws.cell(row=row_num, column=col_idx)
-                cell.alignment = center_alignment
+        # Helper function to fill attendance for a list of students
+        def fill_student_attendance(students_list, start_row):
+            for idx, name in enumerate(students_list):
+                row_num = start_row + idx
                 
-                # Get attendance status for this day
-                has_am = attendance_data[student_key][day]['am']
-                has_pm = attendance_data[student_key][day]['pm']
+                # Write student name
+                ws.cell(row=row_num, column=name_column, value=name)
 
-                # Clear any existing content
-                cell.value = None
-                cell.fill = PatternFill()  # Reset fill
-                cell.font = Font()         # Reset font
+                # Fill attendance for each day in the month
+                for day, col_idx in day_columns.items():
+                    # Skip future dates only if we're generating for current month/year
+                    if year == current_year and month == current_month and day > current_day:
+                        continue
 
-                # Apply attendance marking logic
-                # ABSENT - neither AM nor PM present
-                if not has_am and not has_pm:
-                    cell.fill = red_fill
-                    continue
+                    # Get the cell for this day
+                    cell = ws.cell(row=row_num, column=col_idx)
+                    cell.alignment = center_alignment
+                    
+                    # Get attendance status for this day
+                    has_am = attendance_data[name]['days'][day]['am']
+                    has_pm = attendance_data[name]['days'][day]['pm']
 
-                # FULL DAY PRESENT - both AM and PM
-                if has_am and has_pm:
-                    cell.fill = green_fill
-                    continue
+                    # Clear any existing content
+                    cell.value = None
+                    cell.fill = PatternFill()  # Reset fill
+                    cell.font = Font()         # Reset font
 
-                # HALF DAY PRESENT - either AM or PM
-                if has_am and not has_pm:
-                    # AM only - upper triangle (▲)
-                    cell.value = "▲"
-                    cell.font = green_font
-                elif has_pm and not has_am:
-                    # PM only - lower triangle (▼)
-                    cell.value = "▼"
-                    cell.font = green_font
+                    # Apply attendance marking logic
+                    # ABSENT - neither AM nor PM present
+                    if not has_am and not has_pm:
+                        cell.fill = red_fill
+                        continue
+
+                    # FULL DAY PRESENT - both AM and PM
+                    if has_am and has_pm:
+                        cell.fill = green_fill
+                        continue
+
+                    # HALF DAY PRESENT - either AM or PM
+                    if has_am and not has_pm:
+                        # AM only - upper triangle (▲)
+                        cell.value = "▲"
+                        cell.font = green_font
+                    elif has_pm and not has_am:
+                        # PM only - lower triangle (▼)
+                        cell.value = "▼"
+                        cell.font = green_font
+
+        # Fill BOYS section (starting at row 15)
+        print(f"👦 Filling boys section starting at row {boys_start_row}")
+        fill_student_attendance(boys, boys_start_row)
+        
+        # Fill GIRLS section (starting at row 36)
+        print(f"👧 Filling girls section starting at row {girls_start_row}")
+        fill_student_attendance(girls, girls_start_row)
 
         # Save the workbook to a BytesIO buffer
         buffer = io.BytesIO()
