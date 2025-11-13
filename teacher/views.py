@@ -381,8 +381,8 @@ def generate_sf2_excel(request):
     Now properly aligns Monday to column D and uses large triangles.
     
     Visual Legend:
-    - AM Present (Morning): Large green triangle ◣ (fills top-left)
-    - PM Present (Afternoon): Large green triangle ◢ (fills bottom-right)
+    - AM Present (Morning): Large green triangle ◤ (top-left)
+    - PM Present (Afternoon): Large green triangle ◢ (bottom-right)
     - Full Day Present (AM + PM): Solid green fill
     - Absent: Solid red fill
     
@@ -573,15 +573,13 @@ def generate_sf2_excel(request):
                 
                 print(f"  Processing student: {name} at row {row_num}")
                 
-                # Write student name (check if not merged)
+                # Write student name - FORCE IT
                 try:
-                    if not is_merged_cell(ws, row_num, name_column):
-                        name_cell = ws.cell(row=row_num, column=name_column)
-                        name_cell.value = name
-                        name_cell.alignment = left_alignment
-                        print(f"    ✓ Name written to C{row_num}")
-                    else:
-                        print(f"    ⚠️ Skipping merged cell for name at row {row_num}")
+                    name_cell = ws.cell(row=row_num, column=name_column)
+                    # Force write the name even if merged
+                    name_cell.value = name
+                    name_cell.alignment = left_alignment
+                    print(f"    ✓ Name FORCED to C{row_num}")
                 except Exception as e:
                     print(f"    ❌ Error writing name: {e}")
 
@@ -628,16 +626,16 @@ def generate_sf2_excel(request):
 
                         # HALF DAY PRESENT - Use large triangles that fill the cell
                         elif has_am and not has_pm:
-                            # AM only - upper left triangle: ◣ (Large triangle)
-                            cell.value = "◣"
-                            cell.font = Font(color="00FF00", size=28, bold=True)
-                            cell.alignment = Alignment(horizontal='center', vertical='top')
+                            # AM only - upper left triangle: ◤ (positioned top-left)
+                            cell.value = "◤"
+                            cell.font = Font(color="00FF00", size=32, bold=True)
+                            cell.alignment = Alignment(horizontal='left', vertical='top')
                             filled_count += 1
                         elif has_pm and not has_am:
-                            # PM only - lower right triangle: ◢ (Large triangle)
+                            # PM only - lower right triangle: ◢ (positioned bottom-right)
                             cell.value = "◢"
-                            cell.font = Font(color="00FF00", size=28, bold=True)
-                            cell.alignment = Alignment(horizontal='center', vertical='bottom')
+                            cell.font = Font(color="00FF00", size=32, bold=True)
+                            cell.alignment = Alignment(horizontal='right', vertical='bottom')
                             filled_count += 1
                             
                     except Exception as e:
