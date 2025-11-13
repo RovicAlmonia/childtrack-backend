@@ -378,13 +378,15 @@ class PublicAttendanceListView(generics.ListAPIView):
 def generate_sf2_excel(request):
     """
     Generate SF2 Excel report with attendance data for a specific month.
-    Now properly aligns Monday to column D and uses large triangles.
+    Separates students by gender: Boys start at row 14, Girls start at row 36.
     
     Visual Legend:
-    - AM Present (Morning): Large green triangle ◤ (top-left)
-    - PM Present (Afternoon): Large green triangle ◢ (bottom-right)
+    - AM Present (Morning): Green half-triangle (upper left)
+    - PM Present (Afternoon): Green half-triangle (upper right) 
     - Full Day Present (AM + PM): Solid green fill
     - Absent: Solid red fill
+    
+    All marks appear ABOVE the diagonal lines in the template.
     
     Request Parameters:
     - template_file: Excel template file (multipart/form-data)
@@ -495,6 +497,7 @@ def generate_sf2_excel(request):
         # Define cell styling
         red_fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
         green_fill = PatternFill(start_color='00FF00', end_color='00FF00', fill_type='solid')
+        green_font = Font(color="00FF00", size=11, bold=True)
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
 
@@ -515,10 +518,10 @@ def generate_sf2_excel(request):
         # Template Configuration
         date_row = 11             # Row 11: Dates (1, 2, 3, ...)
         day_row = 12              # Row 12: Day names (Mon, Tue, Wed, Thu, Fri)
-        boys_start_row = 15       # Row 14: First BOYS data row
+        boys_start_row = 14       # Row 14: First BOYS data row
         girls_start_row = 36      # Row 36: First GIRLS data row (adjust if needed)
         name_column = 3           # Column C for student name
-        monday_column = 4        # Column D where Monday (first weekday) starts
+        first_day_column = 4      # Column D where day 1 starts
 
         # Helper function to check if a cell is part of a merged cell
         def is_merged_cell(ws, row, col):
@@ -534,35 +537,30 @@ def generate_sf2_excel(request):
         print(f"📅 Days in {month_name} {year}: {days_in_month}")
 
         # Build day-to-column mapping and fill date/day headers
-        # Only map WEEKDAYS (Monday-Friday) starting from column D
         day_columns = {}
         from datetime import date
         
-        current_col = monday_column  # Start at column D
-        
         for day in range(1, days_in_month + 1):
+            col_idx = first_day_column + (day - 1)
+            day_columns[day] = col_idx
+            
+            # Get the date for this day
             current_date = date(year, month, day)
             day_of_week = current_date.weekday()  # 0=Monday, 6=Sunday
             
-            # Only process weekdays (Monday-Friday)
-            if day_of_week < 5:
-                day_columns[day] = current_col
-                
-                # Fill date in row 11
-                if not is_merged_cell(ws, date_row, current_col):
-                    date_cell = ws.cell(row=date_row, column=current_col)
-                    date_cell.value = day
-                    date_cell.alignment = center_alignment
-                
-                # Fill day name in row 12
-                if not is_merged_cell(ws, day_row, current_col):
-                    day_cell = ws.cell(row=day_row, column=current_col)
-                    day_cell.value = day_names[day_of_week]
-                    day_cell.alignment = center_alignment
-                
-                current_col += 1  # Move to next column
-        
-        print(f"📅 Mapped {len(day_columns)} weekday columns (starting at D={monday_column})")
+            # Fill date in row 11 (only if not merged)
+            if not is_merged_cell(ws, date_row, col_idx):
+                date_cell = ws.cell(row=date_row, column=col_idx)
+                date_cell.value = day
+                date_cell.alignment = center_alignment
+            
+            # Fill day name in row 12 (Monday to Friday only, if not merged)
+            if day_of_week < 5 and not is_merged_cell(ws, day_row, col_idx):  # 0-4 = Mon-Fri
+                day_cell = ws.cell(row=day_row, column=col_idx)
+                day_cell.value = day_names[day_of_week]
+                day_cell.alignment = center_alignment
+            
+        print(f"📅 Mapped {len(day_columns)} day columns (D={first_day_column} to column {first_day_column + days_in_month - 1})")
         print(f"✓ Filled date header (row {date_row}) and day names (row {day_row})")
 
         # Helper function to fill attendance for a list of students
@@ -573,22 +571,20 @@ def generate_sf2_excel(request):
                 
                 print(f"  Processing student: {name} at row {row_num}")
                 
-                # Write student name - FORCE IT
+                # Write student name (check if not merged)
                 try:
-                    name_cell = ws.cell(row=row_num, column=name_column)
-                    # Force write the name even if merged
-                    name_cell.value = name
-                    name_cell.alignment = left_alignment
-                    print(f"    ✓ Name FORCED to C{row_num}")
+                    if not is_merged_cell(ws, row_num, name_column):
+                        name_cell = ws.cell(row=row_num, column=name_column)
+                        name_cell.value = name
+                        name_cell.alignment = left_alignment
+                        print(f"    ✓ Name written to C{row_num}")
+                    else:
+                        print(f"    ⚠️ Skipping merged cell for name at row {row_num}")
                 except Exception as e:
                     print(f"    ❌ Error writing name: {e}")
 
                 # Fill attendance for each day in the month
                 for day in range(1, days_in_month + 1):
-                    # Skip if this day is not a weekday (not in our mapping)
-                    if day not in day_columns:
-                        continue
-                        
                     col_idx = day_columns[day]
                     
                     # Skip future dates
@@ -624,18 +620,16 @@ def generate_sf2_excel(request):
                             cell.fill = green_fill
                             filled_count += 1
 
-                        # HALF DAY PRESENT - Use large triangles that fill the cell
+                        # HALF DAY PRESENT
                         elif has_am and not has_pm:
-                            # AM only - upper left triangle: ◤ (positioned top-left)
+                            # AM only - upper left triangle: ◤
                             cell.value = "◤"
-                            cell.font = Font(color="00FF00", size=32, bold=True)
-                            cell.alignment = Alignment(horizontal='left', vertical='top')
+                            cell.font = green_font
                             filled_count += 1
                         elif has_pm and not has_am:
-                            # PM only - lower right triangle: ◢ (positioned bottom-right)
+                            # PM only - lower right triangle: ◢
                             cell.value = "◢"
-                            cell.font = Font(color="00FF00", size=32, bold=True)
-                            cell.alignment = Alignment(horizontal='right', vertical='bottom')
+                            cell.font = green_font
                             filled_count += 1
                             
                     except Exception as e:
