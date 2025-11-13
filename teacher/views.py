@@ -501,11 +501,11 @@ def generate_sf2_excel(request):
             ws = wb[month_name]
             
             # Template Configuration - Adjust these based on your SF2 template structure
-            date_header_row = 10      # Row where dates (1, 2, 3, ...) are displayed
-            start_row = 13            # First row where student data begins
-            lrn_column = 1            # Column for student LRN
-            name_column = 2           # Column for student name
-            first_day_column = 7      # Column where day 1 starts
+            date_header_row = 11      # Row where dates (1, 2, 3, ...) are displayed
+            start_row = 14           # First row where student data begins
+            lrn_column = 2            # Column for student LRN
+            name_column = 3           # Column for student name
+            first_day_column = 4      # Column where day 1 starts
 
             # Find all day columns by scanning the date header row
             day_columns = {}
