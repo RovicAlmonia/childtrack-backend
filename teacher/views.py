@@ -515,10 +515,10 @@ def generate_sf2_excel(request):
         # Template Configuration
         date_row = 11             # Row 11: Dates (1, 2, 3, ...)
         day_row = 12              # Row 12: Day names (Mon, Tue, Wed, Thu, Fri)
-        boys_start_row = 14       # Row 14: First BOYS data row
+        boys_start_row = 15       # Row 14: First BOYS data row
         girls_start_row = 36      # Row 36: First GIRLS data row (adjust if needed)
         name_column = 3           # Column C for student name
-        monday_column = 4         # Column D where Monday (first weekday) starts
+        monday_column = 4        # Column D where Monday (first weekday) starts
 
         # Helper function to check if a cell is part of a merged cell
         def is_merged_cell(ws, row, col):
