@@ -376,13 +376,14 @@ def generate_sf2_excel(request):
     """
     Generate SF2 Excel report with attendance data for a specific month.
     Separates students by gender: Boys start at row 14, Girls start at row 36.
+    ONLY WEEKDAYS (Monday-Friday) are included in the calendar.
     
     NAME FORMAT:
     - Column B (Row 14+): FULL NAME (Last Name, First Name Middle Name)
     
     Visual Legend:
-    - AM Present (Morning): Green triangle ◤ at TOP-LEFT corner of cell
-    - PM Present (Afternoon): Green triangle ◢ at BOTTOM-RIGHT corner of cell
+    - AM Present (Morning): Green triangle ◢ at BOTTOM-RIGHT corner of cell
+    - PM Present (Afternoon): Green triangle ◤ at TOP-LEFT corner of cell  
     - Full Day Present (AM + PM): Solid green fill
     - Absent: Solid red fill
     
@@ -492,19 +493,21 @@ def generate_sf2_excel(request):
         current_year = now.year
         current_month = now.month
 
-        # Define cell styling
+        # Define cell styling - CORRECTED TRIANGLE POSITIONS
         red_fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
-        green_fill = PatternFill(start_color='00FF00', end_color='00FF00', fill_type='solid')
+        green_fill = PatternFill(start_color='00B050', end_color='00B050', fill_type='solid')  # Better green
         
-        # LARGER font for triangles positioned at corners
-        large_green_font = Font(color="00FF00", size=32, bold=True)
+        # Triangle font - positioned at corners with proper size
+        triangle_font = Font(color="00B050", size=28, bold=True)
         
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
         
-        # CORNER ALIGNMENTS for triangles
-        top_left_alignment = Alignment(horizontal='left', vertical='top', wrap_text=False, shrink_to_fit=False)
-        bottom_right_alignment = Alignment(horizontal='right', vertical='bottom', wrap_text=False, shrink_to_fit=False)
+        # CORNER ALIGNMENTS for triangles - CORRECTED
+        # AM (morning) = ◢ bottom-right
+        bottom_right_alignment = Alignment(horizontal='right', vertical='bottom', wrap_text=False, indent=0)
+        # PM (afternoon) = ◤ top-left  
+        top_left_alignment = Alignment(horizontal='left', vertical='top', wrap_text=False, indent=0)
 
         # Use the first sheet from the template
         if len(wb.sheetnames) > 0:
@@ -520,56 +523,40 @@ def generate_sf2_excel(request):
         month_name = month_names[month - 1]
         print(f"📅 Filling data for: {month_name} {year}")
         
-        # Template Configuration - UPDATED
-        date_row = 11             # Row 11: Dates (1, 2, 3, ...)
-        day_row = 12              # Row 12: Day names (Mon, Tue, Wed, Thu, Fri) - STARTS AT COLUMN D
+        # Template Configuration
+        date_row = 11             # Row 11: Dates (only weekday dates)
+        day_row = 12              # Row 12: Day names (Mon, Tue, Wed, Thu, Fri)
         boys_start_row = 14       # Row 14: First BOYS data row
         girls_start_row = 36      # Row 36: First GIRLS data row
         
-        # UPDATED: Full name in Column B only
         name_column = 2           # Column B for FULL NAME
         first_day_column = 4      # Column D where day 1 starts
 
         # Helper function to unmerge and write to a cell
         def unmerge_and_write(ws, row, col, value, alignment=None):
-            """
-            FORCE unmerge cell if needed and write value.
-            """
+            """FORCE unmerge cell if needed and write value."""
             from openpyxl.cell.cell import MergedCell
             
-            # First pass: check if cell is merged and unmerge it
             cell_coord = ws.cell(row=row, column=col).coordinate
-            was_merged = False
             
             for merged_range in list(ws.merged_cells.ranges):
                 if cell_coord in merged_range:
                     ws.unmerge_cells(str(merged_range))
                     print(f"    🔓 Unmerged {merged_range}")
-                    was_merged = True
                     break
             
-            # Get a FRESH cell reference after unmerging
             cell = ws.cell(row=row, column=col)
             
-            # Verify it's not still a MergedCell
             if isinstance(cell, MergedCell):
-                print(f"    ⚠️ WARNING: Cell {cell_coord} is still MergedCell after unmerge attempt")
-                cell = ws._get_cell(row, col)
+                del ws._cells[(row, col)]
+                cell = ws.cell(row=row, column=col)
             
-            # Now write the value
             try:
                 cell.value = value
                 if alignment:
                     cell.alignment = alignment
-                print(f"    ✓ Written value '{value}' to {cell_coord}")
             except AttributeError as e:
-                print(f"    ❌ Still can't write to {cell_coord}: {e}")
-                del ws._cells[(row, col)]
-                cell = ws.cell(row=row, column=col)
-                cell.value = value
-                if alignment:
-                    cell.alignment = alignment
-                print(f"    ✓ Force-recreated and written to {cell_coord}")
+                print(f"    ❌ Error writing to {cell_coord}: {e}")
                 
             return cell
 
@@ -577,30 +564,34 @@ def generate_sf2_excel(request):
         days_in_month = monthrange(year, month)[1]
         print(f"📅 Days in {month_name} {year}: {days_in_month}")
 
-        # Build day-to-column mapping and fill date/day headers
-        day_columns = {}
+        # Build day-to-column mapping ONLY FOR WEEKDAYS (Mon-Fri)
+        day_columns = {}  # {day_number: column_index}
         from datetime import date
         
-        # Fill date headers (Row 11) and day names (Row 12) starting at Column D
-        print("\n📅 Filling date and day headers starting at Column D...")
+        print("\n📅 Filling weekday headers starting at Column D...")
+        current_col = first_day_column  # Start at column D
+        
         for day in range(1, days_in_month + 1):
-            col_idx = first_day_column + (day - 1)  # D=4, E=5, F=6, etc.
-            day_columns[day] = col_idx
-            
-            # Get the date for this day
             current_date = date(year, month, day)
             day_of_week = current_date.weekday()  # 0=Monday, 6=Sunday
             
-            # Fill date in row 11
-            unmerge_and_write(ws, date_row, col_idx, day, center_alignment)
-            
-            # Fill day name in row 12 - ONLY Monday to Friday
-            if day_of_week < 5:  # 0-4 = Mon-Fri
+            # ONLY process weekdays (Monday=0 to Friday=4)
+            if day_of_week < 5:
+                day_columns[day] = current_col
+                
+                # Fill date in row 11
+                unmerge_and_write(ws, date_row, current_col, day, center_alignment)
+                
+                # Fill day name in row 12
                 day_name = day_names[day_of_week]
-                unmerge_and_write(ws, day_row, col_idx, day_name, center_alignment)
-                print(f"    Day {day} ({current_date}): {day_name} at column {col_idx}")
-            
-        print(f"✓ Filled date header (row {date_row}) and day names (row {day_row})")
+                unmerge_and_write(ws, day_row, current_col, day_name, center_alignment)
+                
+                print(f"    Day {day} ({current_date.strftime('%Y-%m-%d')}): {day_name} at column {current_col}")
+                current_col += 1  # Move to next column only for weekdays
+            else:
+                print(f"    Day {day} ({current_date.strftime('%Y-%m-%d')}): WEEKEND - SKIPPED")
+        
+        print(f"✓ Filled {len(day_columns)} weekday columns")
 
         # Helper function to check if cell is merged
         def is_merged_cell(ws, row, col):
@@ -619,23 +610,19 @@ def generate_sf2_excel(request):
                 
                 # Write FULL NAME to Column B
                 unmerge_and_write(ws, row_num, name_column, name, left_alignment)
-                print(f"    ✓ Full Name '{name}' written to Column B")
 
-                # Fill attendance for each day in the month
-                for day in range(1, days_in_month + 1):
-                    col_idx = day_columns[day]
-                    
+                # Fill attendance ONLY for weekdays
+                for day, col_idx in day_columns.items():
                     # Skip future dates
                     if year == current_year and month == current_month and day > current_day:
                         continue
 
                     try:
-                        # Check if merged and skip if it is
+                        # Skip merged cells
                         if is_merged_cell(ws, row_num, col_idx):
                             print(f"    ⏭️ Skipping merged cell at row {row_num}, col {col_idx}")
                             continue
                             
-                        # Get the cell for this day
                         cell = ws.cell(row=row_num, column=col_idx)
                         
                         # Get attendance status
@@ -661,21 +648,19 @@ def generate_sf2_excel(request):
                             filled_count += 1
 
                         # HALF DAY PRESENT - TRIANGLES AT CORNERS
+                        # AM only = ◢ at BOTTOM-RIGHT (like in the image)
                         elif has_am and not has_pm:
-                            # AM only - upper left triangle ◤ positioned at TOP-LEFT CORNER
-                            cell.value = "◤"
-                            cell.font = large_green_font
-                            cell.alignment = top_left_alignment
-                            filled_count += 1
-                            print(f"    ◤ AM triangle at day {day} (top-left corner)")
-                            
-                        elif has_pm and not has_am:
-                            # PM only - lower right triangle ◢ positioned at BOTTOM-RIGHT CORNER
                             cell.value = "◢"
-                            cell.font = large_green_font
+                            cell.font = triangle_font
                             cell.alignment = bottom_right_alignment
                             filled_count += 1
-                            print(f"    ◢ PM triangle at day {day} (bottom-right corner)")
+                            
+                        # PM only = ◤ at TOP-LEFT
+                        elif has_pm and not has_am:
+                            cell.value = "◤"
+                            cell.font = triangle_font
+                            cell.alignment = top_left_alignment
+                            filled_count += 1
                             
                     except Exception as e:
                         print(f"    ❌ Error filling day {day}: {e}")
