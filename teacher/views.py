@@ -21,6 +21,7 @@ from openpyxl.drawing.fill import GradientFillProperties, GradientStop
 from datetime import datetime
 from collections import defaultdict
 from calendar import monthrange
+from zoneinfo import ZoneInfo
 import io
 import json
 import re
@@ -164,8 +165,11 @@ class AttendanceView(APIView):
             if not data.get('date'):
                 data['date'] = datetime.now().date()
 
-            timestamp = datetime.now()
-            data['session'] = 'AM' if timestamp.hour < 12 else 'PM'
+            # Determine session based on Philippine Time if not provided
+            if not data.get('session'):
+                now = datetime.now()
+                ph_time = now.astimezone(ZoneInfo('Asia/Manila'))
+                data['session'] = 'AM' if ph_time.hour < 12 else 'PM'
 
             serializer = AttendanceSerializer(data=data)
             if serializer.is_valid():
@@ -370,8 +374,6 @@ class PublicAttendanceListView(generics.ListAPIView):
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
 
-
-
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def generate_sf2_excel(request):
@@ -384,8 +386,8 @@ def generate_sf2_excel(request):
     - Column B (Row 14+): FULL NAME (Last Name, First Name Middle Name)
     
     Visual Legend:
-    - AM Present (Morning): Green triangle ◤ centered in cell
-    - PM Present (Afternoon): Green triangle ◢ centered in cell
+    - AM Present (Morning): Green triangle ◤ at TOP-LEFT corner of cell
+    - PM Present (Afternoon): Green triangle ◢ at BOTTOM-RIGHT corner of cell  
     - Full Day Present (AM + PM): Solid green fill
     - Absent: Solid red fill
     
@@ -466,11 +468,15 @@ def generate_sf2_excel(request):
             if student_name not in students_dict:
                 students_dict[student_name] = att.gender if hasattr(att, 'gender') and att.gender else 'Male'
             
-            # Determine session (AM/PM)
-            if att.session:
+            # Determine session with better fallback logic
+            if hasattr(att, 'session') and att.session:
                 session = att.session.upper()
+            elif att.timestamp:
+                # Use Philippine timezone for consistent session determination
+                ph_time = att.timestamp.astimezone(ZoneInfo('Asia/Manila'))
+                session = 'AM' if ph_time.hour < 12 else 'PM'
             else:
-                session = 'AM' if att.timestamp.hour < 12 else 'PM'
+                session = 'AM'  # Default fallback
 
             # Mark attendance only if status is NOT 'Absent'
             if att.status and att.status.lower() != 'absent':
@@ -499,19 +505,17 @@ def generate_sf2_excel(request):
         red_fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
         green_fill = PatternFill(start_color='00B050', end_color='00B050', fill_type='solid')
         
-        # Triangle font - LARGER size to fill more of the cell
-        triangle_font = Font(color="00B050", size=40, bold=True)
+        # Triangle font - LARGE size to fill entire cell as half-triangle
+        triangle_font = Font(color="00B050", size=48, bold=True)
         
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
         
-        # TRIANGLE ALIGNMENT - Middle align (vertical center) + Justify (horizontal)
-        triangle_alignment = Alignment(
-            horizontal='justify', 
-            vertical='center', 
-            wrap_text=False, 
-            shrink_to_fit=False
-        )
+        # CORNER ALIGNMENTS for triangles
+        # AM (morning) = ◤ top-left
+        top_left_alignment = Alignment(horizontal='left', vertical='top', wrap_text=False, indent=0)
+        # PM (afternoon) = ◢ bottom-right
+        bottom_right_alignment = Alignment(horizontal='right', vertical='bottom', wrap_text=False, indent=0)
 
         # Use the first sheet from the template
         if len(wb.sheetnames) > 0:
@@ -636,36 +640,37 @@ def generate_sf2_excel(request):
                         has_am = attendance_data[name]['days'][day]['am']
                         has_pm = attendance_data[name]['days'][day]['pm']
 
-                        # Clear existing content and reset formatting
+                        # Clear existing content
                         cell.value = None
-                        cell.fill = PatternFill(fill_type=None)
+                        cell.fill = PatternFill()
                         cell.font = Font()
-                        cell.alignment = center_alignment
 
                         # Apply attendance marking logic
                         # ABSENT - neither AM nor PM present
                         if not has_am and not has_pm:
                             cell.fill = red_fill
+                            cell.alignment = center_alignment
                             filled_count += 1
 
                         # FULL DAY PRESENT - both AM and PM
                         elif has_am and has_pm:
                             cell.fill = green_fill
+                            cell.alignment = center_alignment
                             filled_count += 1
 
-                        # HALF DAY PRESENT - TRIANGLES WITH MIDDLE ALIGN + JUSTIFY
-                        # AM only = ◤ (justify + center vertical)
+                        # HALF DAY PRESENT - TRIANGLES AT CORNERS
+                        # AM only = ◤ at TOP-LEFT
                         elif has_am and not has_pm:
                             cell.value = "◤"
                             cell.font = triangle_font
-                            cell.alignment = triangle_alignment
+                            cell.alignment = top_left_alignment
                             filled_count += 1
                             
-                        # PM only = ◢ (justify + center vertical)
+                        # PM only = ◢ at BOTTOM-RIGHT
                         elif has_pm and not has_am:
                             cell.value = "◢"
                             cell.font = triangle_font
-                            cell.alignment = triangle_alignment
+                            cell.alignment = bottom_right_alignment
                             filled_count += 1
                             
                     except Exception as e:
@@ -704,8 +709,7 @@ def generate_sf2_excel(request):
 
     except TeacherProfile.DoesNotExist:
         return Response(
-            {"error": "Teacher profile not found."},
-            status=status.HTTP_404_NOT_FOUND
+            {"error": "Teacher profile not found."},status=status.HTTP_404_NOT_FOUND
         )
     except Exception as e:
         # Log the full error for debugging
