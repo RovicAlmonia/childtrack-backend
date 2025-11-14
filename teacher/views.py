@@ -370,6 +370,7 @@ class PublicAttendanceListView(generics.ListAPIView):
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
 
+
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def generate_sf2_excel(request):
