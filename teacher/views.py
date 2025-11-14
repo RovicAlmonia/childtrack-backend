@@ -717,4 +717,4 @@ def generate_sf2_excel(request):
         return Response(
             {"error": f"Failed to generate SF2 Excel: {str(e)}"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        
+        )
