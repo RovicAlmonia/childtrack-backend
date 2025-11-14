@@ -371,6 +371,8 @@ class PublicAttendanceListView(generics.ListAPIView):
     authentication_classes = []
 
 
+
+
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def generate_sf2_excel(request):
@@ -383,8 +385,8 @@ def generate_sf2_excel(request):
     - Column B (Row 14+): FULL NAME (Last Name, First Name Middle Name)
     
     Visual Legend:
-    - AM Present (Morning): Green triangle ◤ at TOP-LEFT corner of cell
-    - PM Present (Afternoon): Green triangle ◢ at BOTTOM-RIGHT corner of cell  
+    - AM Present (Morning): Green triangle ◤ centered in cell
+    - PM Present (Afternoon): Green triangle ◢ centered in cell
     - Full Day Present (AM + PM): Solid green fill
     - Absent: Solid red fill
     
@@ -498,28 +500,18 @@ def generate_sf2_excel(request):
         red_fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
         green_fill = PatternFill(start_color='00B050', end_color='00B050', fill_type='solid')
         
-        # Triangle font - sized to fit within cell boundaries without overflow
-        triangle_font = Font(color="00B050", size=28, bold=True)
+        # Triangle font - LARGER size to fill more of the cell
+        triangle_font = Font(color="00B050", size=40, bold=True)
         
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
         
-        # CORNER ALIGNMENTS for triangles - properly contained within cell borders
-        # AM (morning) = ◤ top-left
-        top_left_alignment = Alignment(
-            horizontal='left', 
-            vertical='top', 
+        # TRIANGLE ALIGNMENT - Middle align (vertical center) + Justify (horizontal)
+        triangle_alignment = Alignment(
+            horizontal='justify', 
+            vertical='center', 
             wrap_text=False, 
-            shrink_to_fit=False,
-            indent=0
-        )
-        # PM (afternoon) = ◢ bottom-right
-        bottom_right_alignment = Alignment(
-            horizontal='right', 
-            vertical='bottom', 
-            wrap_text=False, 
-            shrink_to_fit=False,
-            indent=0
+            shrink_to_fit=False
         )
 
         # Use the first sheet from the template
@@ -662,15 +654,15 @@ def generate_sf2_excel(request):
                             cell.fill = green_fill
                             filled_count += 1
 
-                        # HALF DAY PRESENT - TRIANGLES CENTERED IN CELL
-                        # AM only = ◤ centered
+                        # HALF DAY PRESENT - TRIANGLES WITH MIDDLE ALIGN + JUSTIFY
+                        # AM only = ◤ (justify + center vertical)
                         elif has_am and not has_pm:
                             cell.value = "◤"
                             cell.font = triangle_font
                             cell.alignment = triangle_alignment
                             filled_count += 1
                             
-                        # PM only = ◢ centered
+                        # PM only = ◢ (justify + center vertical)
                         elif has_pm and not has_am:
                             cell.value = "◢"
                             cell.font = triangle_font
