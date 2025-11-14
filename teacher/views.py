@@ -369,6 +369,8 @@ class PublicAttendanceListView(generics.ListAPIView):
     serializer_class = AttendanceSerializer
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
+
+
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def generate_sf2_excel(request):
@@ -660,19 +662,19 @@ def generate_sf2_excel(request):
                             cell.fill = green_fill
                             filled_count += 1
 
-                        # HALF DAY PRESENT - TRIANGLES AT CORNERS
-                        # AM only = ◤ at TOP-LEFT
+                        # HALF DAY PRESENT - TRIANGLES CENTERED IN CELL
+                        # AM only = ◤ centered
                         elif has_am and not has_pm:
                             cell.value = "◤"
                             cell.font = triangle_font
-                            cell.alignment = top_left_alignment
+                            cell.alignment = triangle_alignment
                             filled_count += 1
                             
-                        # PM only = ◢ at BOTTOM-RIGHT
+                        # PM only = ◢ centered
                         elif has_pm and not has_am:
                             cell.value = "◢"
                             cell.font = triangle_font
-                            cell.alignment = bottom_right_alignment
+                            cell.alignment = triangle_alignment
                             filled_count += 1
                             
                     except Exception as e:
