@@ -371,9 +371,6 @@ class PublicAttendanceListView(generics.ListAPIView):
     authentication_classes = []
 
 
-
-
-
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def generate_sf2_excel(request):
@@ -386,8 +383,8 @@ def generate_sf2_excel(request):
     - Column B (Row 14+): FULL NAME (Last Name, First Name Middle Name)
     
     Visual Legend:
-    - AM Present (Morning): Green triangle ◢ at BOTTOM-RIGHT corner of cell
-    - PM Present (Afternoon): Green triangle ◤ at TOP-LEFT corner of cell  
+    - AM Present (Morning): Green triangle ◤ at TOP-LEFT corner of cell
+    - PM Present (Afternoon): Green triangle ◢ at BOTTOM-RIGHT corner of cell  
     - Full Day Present (AM + PM): Solid green fill
     - Absent: Solid red fill
     
@@ -438,8 +435,8 @@ def generate_sf2_excel(request):
         month_names = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", 
                       "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
         
-        # Day names - EXACT ORDER: Mon, Tue, Wed, Thu, Fri
-        day_names = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+        # Day names - EXACT ORDER: Mon, Tue, Wed, Thu, Fri, Sat, Sun (abbreviated)
+        day_names_short = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
         # Fetch attendance records for the SPECIFIC MONTH only
         attendances = Attendance.objects.filter(
@@ -497,21 +494,21 @@ def generate_sf2_excel(request):
         current_year = now.year
         current_month = now.month
 
-        # Define cell styling - CORRECTED TRIANGLE POSITIONS
+        # Define cell styling
         red_fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
-        green_fill = PatternFill(start_color='00B050', end_color='00B050', fill_type='solid')  # Better green
+        green_fill = PatternFill(start_color='00B050', end_color='00B050', fill_type='solid')
         
-        # Triangle font - positioned at corners with proper size
-        triangle_font = Font(color="00B050", size=28, bold=True)
+        # Triangle font - proper size for half-cell triangles
+        triangle_font = Font(color="00B050", size=20, bold=True)
         
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
         
-        # CORNER ALIGNMENTS for triangles - CORRECTED
-        # AM (morning) = ◢ bottom-right
-        bottom_right_alignment = Alignment(horizontal='right', vertical='bottom', wrap_text=False, indent=0)
-        # PM (afternoon) = ◤ top-left  
+        # CORNER ALIGNMENTS for triangles
+        # AM (morning) = ◤ top-left
         top_left_alignment = Alignment(horizontal='left', vertical='top', wrap_text=False, indent=0)
+        # PM (afternoon) = ◢ bottom-right
+        bottom_right_alignment = Alignment(horizontal='right', vertical='bottom', wrap_text=False, indent=0)
 
         # Use the first sheet from the template
         if len(wb.sheetnames) > 0:
@@ -528,13 +525,13 @@ def generate_sf2_excel(request):
         print(f"📅 Filling data for: {month_name} {year}")
         
         # Template Configuration
-        date_row = 11             # Row 11: Dates (only weekday dates)
-        day_row = 12              # Row 12: Day names (Mon, Tue, Wed, Thu, Fri)
+        date_row = 11             # Row 11: Dates (1-31)
+        day_row = 12              # Row 12: Day names (Mon, Tue, Wed, etc.)
         boys_start_row = 14       # Row 14: First BOYS data row
         girls_start_row = 36      # Row 36: First GIRLS data row
         
         name_column = 2           # Column B for FULL NAME
-        first_day_column = 4      # Column D where day 1 starts
+        first_day_column = 4      # Column D where day 1 starts (Column D = 4)
 
         # Helper function to unmerge and write to a cell
         def unmerge_and_write(ws, row, col, value, alignment=None):
@@ -568,34 +565,35 @@ def generate_sf2_excel(request):
         days_in_month = monthrange(year, month)[1]
         print(f"📅 Days in {month_name} {year}: {days_in_month}")
 
-        # Build day-to-column mapping ONLY FOR WEEKDAYS (Mon-Fri)
+        # Build day-to-column mapping - ALL DAYS including weekends
+        # Days 1-31 map to columns D-AA (4-27 for days 1-24, then 28-34 for days 25-31)
         day_columns = {}  # {day_number: column_index}
         from datetime import date
         
-        print("\n📅 Filling weekday headers starting at Column D...")
-        current_col = first_day_column  # Start at column D
+        print("\n📅 Filling calendar headers (dates 1-31 across columns D-AA)...")
         
         for day in range(1, days_in_month + 1):
             current_date = date(year, month, day)
             day_of_week = current_date.weekday()  # 0=Monday, 6=Sunday
             
-            # ONLY process weekdays (Monday=0 to Friday=4)
-            if day_of_week < 5:
-                day_columns[day] = current_col
-                
-                # Fill date in row 11
-                unmerge_and_write(ws, date_row, current_col, day, center_alignment)
-                
-                # Fill day name in row 12
-                day_name = day_names[day_of_week]
-                unmerge_and_write(ws, day_row, current_col, day_name, center_alignment)
-                
-                print(f"    Day {day} ({current_date.strftime('%Y-%m-%d')}): {day_name} at column {current_col}")
-                current_col += 1  # Move to next column only for weekdays
-            else:
-                print(f"    Day {day} ({current_date.strftime('%Y-%m-%d')}): WEEKEND - SKIPPED")
+            # Map day to column: Column D (4) is day 1
+            col_idx = first_day_column + (day - 1)
+            day_columns[day] = col_idx
+            
+            # Fill date in row 11
+            unmerge_and_write(ws, date_row, col_idx, day, center_alignment)
+            
+            # Fill day name in row 12 (aligned with calendar)
+            day_name = day_names_short[day_of_week]
+            unmerge_and_write(ws, day_row, col_idx, day_name, center_alignment)
+            
+            # Determine if weekend
+            is_weekend = day_of_week >= 5  # Saturday=5, Sunday=6
+            weekend_marker = " (WEEKEND)" if is_weekend else ""
+            
+            print(f"    Day {day:2d} ({current_date.strftime('%Y-%m-%d')}): {day_name} at column {col_idx}{weekend_marker}")
         
-        print(f"✓ Filled {len(day_columns)} weekday columns")
+        print(f"✓ Filled {len(day_columns)} calendar days across columns")
 
         # Helper function to check if cell is merged
         def is_merged_cell(ws, row, col):
@@ -615,7 +613,7 @@ def generate_sf2_excel(request):
                 # Write FULL NAME to Column B
                 unmerge_and_write(ws, row_num, name_column, name, left_alignment)
 
-                # Fill attendance ONLY for weekdays
+                # Fill attendance for ALL days (including weekends)
                 for day, col_idx in day_columns.items():
                     # Skip future dates
                     if year == current_year and month == current_month and day > current_day:
@@ -652,18 +650,18 @@ def generate_sf2_excel(request):
                             filled_count += 1
 
                         # HALF DAY PRESENT - TRIANGLES AT CORNERS
-                        # AM only = ◢ at BOTTOM-RIGHT (like in the image)
+                        # AM only = ◤ at TOP-LEFT
                         elif has_am and not has_pm:
-                            cell.value = "◢"
-                            cell.font = triangle_font
-                            cell.alignment = bottom_right_alignment
-                            filled_count += 1
-                            
-                        # PM only = ◤ at TOP-LEFT
-                        elif has_pm and not has_am:
                             cell.value = "◤"
                             cell.font = triangle_font
                             cell.alignment = top_left_alignment
+                            filled_count += 1
+                            
+                        # PM only = ◢ at BOTTOM-RIGHT
+                        elif has_pm and not has_am:
+                            cell.value = "◢"
+                            cell.font = triangle_font
+                            cell.alignment = bottom_right_alignment
                             filled_count += 1
                             
                     except Exception as e:
