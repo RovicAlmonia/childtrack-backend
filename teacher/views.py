@@ -497,8 +497,8 @@ def generate_sf2_excel(request):
         red_fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
         green_fill = PatternFill(start_color='00B050', end_color='00B050', fill_type='solid')
         
-        # Triangle font - LARGE size to fill entire cell as half-triangle
-        triangle_font = Font(color="00B050", size=44, bold=True)
+        # Triangle font - sized to fit within cell boundaries
+        triangle_font = Font(color="00B050", size=36, bold=True)
         
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
@@ -644,22 +644,21 @@ def generate_sf2_excel(request):
                         has_am = attendance_data[name]['days'][day]['am']
                         has_pm = attendance_data[name]['days'][day]['pm']
 
-                        # Clear existing content
+                        # Clear existing content and reset formatting
                         cell.value = None
-                        cell.fill = PatternFill()
+                        cell.fill = PatternFill(fill_type=None)
                         cell.font = Font()
+                        cell.alignment = center_alignment
 
                         # Apply attendance marking logic
                         # ABSENT - neither AM nor PM present
                         if not has_am and not has_pm:
                             cell.fill = red_fill
-                            cell.alignment = center_alignment
                             filled_count += 1
 
                         # FULL DAY PRESENT - both AM and PM
                         elif has_am and has_pm:
                             cell.fill = green_fill
-                            cell.alignment = center_alignment
                             filled_count += 1
 
                         # HALF DAY PRESENT - TRIANGLES AT CORNERS
