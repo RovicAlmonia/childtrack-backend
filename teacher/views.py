@@ -371,9 +371,10 @@ class PublicAttendanceListView(generics.ListAPIView):
     authentication_classes = []
 
 # -----------------------------
-# SF2 EXCEL GENERATION - FIXED VERSION
+# SF2 EXCEL GENERATION - FORCED UNMERGE FIX
 # -----------------------------
-# views.py - Complete SF2 Generation Function with All Fixes
+# views.py - Fixed unmerge_and_write function
+
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def generate_sf2_excel(request):
@@ -525,22 +526,51 @@ def generate_sf2_excel(request):
         name_column = 3           # Column C for student name
         first_day_column = 4      # Column D where day 1 starts
 
-        # Helper function to unmerge and write to a cell
+        # Helper function to unmerge and write to a cell - FIXED VERSION
         def unmerge_and_write(ws, row, col, value, alignment=None):
-            """Unmerge cell if needed and write value"""
-            cell = ws.cell(row=row, column=col)
+            """
+            FORCE unmerge cell if needed and write value.
+            Key fix: Get a fresh cell reference AFTER unmerging.
+            """
+            from openpyxl.cell.cell import MergedCell
             
-            # Check if cell is part of a merged range
+            # First pass: check if cell is merged and unmerge it
+            cell_coord = ws.cell(row=row, column=col).coordinate
+            was_merged = False
+            
             for merged_range in list(ws.merged_cells.ranges):
-                if cell.coordinate in merged_range:
+                if cell_coord in merged_range:
                     ws.unmerge_cells(str(merged_range))
                     print(f"    🔓 Unmerged {merged_range}")
+                    was_merged = True
                     break
             
+            # CRITICAL FIX: Get a FRESH cell reference after unmerging
+            # This ensures we get a regular Cell object, not a MergedCell
+            cell = ws.cell(row=row, column=col)
+            
+            # Verify it's not still a MergedCell (safety check)
+            if isinstance(cell, MergedCell):
+                print(f"    ⚠️ WARNING: Cell {cell_coord} is still MergedCell after unmerge attempt")
+                # Force get the cell again
+                cell = ws._get_cell(row, col)
+            
             # Now write the value
-            cell.value = value
-            if alignment:
-                cell.alignment = alignment
+            try:
+                cell.value = value
+                if alignment:
+                    cell.alignment = alignment
+                print(f"    ✓ Written value '{value}' to {cell_coord}")
+            except AttributeError as e:
+                print(f"    ❌ Still can't write to {cell_coord}: {e}")
+                # Last resort: delete and recreate the cell
+                del ws._cells[(row, col)]
+                cell = ws.cell(row=row, column=col)
+                cell.value = value
+                if alignment:
+                    cell.alignment = alignment
+                print(f"    ✓ Force-recreated and written to {cell_coord}")
+                
             return cell
 
         # Get number of days in the month
@@ -552,6 +582,7 @@ def generate_sf2_excel(request):
         from datetime import date
         
         # FIXED: Start from column D (4) for day 1 - FORCE UNMERGE
+        print("\n📅 Filling date and day headers...")
         for day in range(1, days_in_month + 1):
             col_idx = first_day_column + (day - 1)  # D=4, E=5, F=6, etc.
             day_columns[day] = col_idx
@@ -567,8 +598,14 @@ def generate_sf2_excel(request):
             if day_of_week < 5:  # 0-4 = Mon-Fri
                 unmerge_and_write(ws, day_row, col_idx, day_names[day_of_week], center_alignment)
             
-        print(f"📅 Mapped {len(day_columns)} day columns starting at D{date_row}")
         print(f"✓ Filled date header (row {date_row}) and day names (row {day_row})")
+
+        # Helper function to check if cell is merged
+        def is_merged_cell(ws, row, col):
+            """Check if a cell is part of a merged range"""
+            from openpyxl.cell.cell import MergedCell
+            cell = ws.cell(row=row, column=col)
+            return isinstance(cell, MergedCell)
 
         # Helper function to fill attendance for a list of students
         def fill_student_attendance(students_list, start_row):
@@ -578,14 +615,8 @@ def generate_sf2_excel(request):
                 
                 print(f"  Processing student: {name} at row {row_num}")
                 
-                # Write student name - FORCE WRITE (skip merged cells)
-                if not is_merged_cell(ws, row_num, name_column):
-                    name_cell = ws.cell(row=row_num, column=name_column)
-                    name_cell.value = name
-                    name_cell.alignment = left_alignment
-                    print(f"    ✓ Name written to C{row_num}")
-                else:
-                    print(f"    ⚠️ Skipped merged cell at C{row_num}")
+                # Write student name - FORCE UNMERGE
+                unmerge_and_write(ws, row_num, name_column, name, left_alignment)
 
                 # Fill attendance for each day in the month
                 for day in range(1, days_in_month + 1):
@@ -596,8 +627,9 @@ def generate_sf2_excel(request):
                         continue
 
                     try:
-                        # Skip merged cells for attendance data
+                        # Check if merged and skip if it is (for attendance data only)
                         if is_merged_cell(ws, row_num, col_idx):
+                            print(f"    ⏭️ Skipping merged cell at row {row_num}, col {col_idx}")
                             continue
                             
                         # Get the cell for this day
