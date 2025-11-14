@@ -54,7 +54,8 @@ class TeacherProfileAdmin(admin.ModelAdmin):
 class AttendanceAdmin(admin.ModelAdmin):
     list_display = [
         'student_name', 
-        'student_lrn', 
+        'student_lrn',
+        'gender',  # ADD THIS LINE
         'date', 
         'session',
         'status',
@@ -65,6 +66,7 @@ class AttendanceAdmin(admin.ModelAdmin):
     list_filter = [
         'status', 
         'session',
+        'gender',  # ADD THIS LINE for filtering too
         'date', 
         'teacher__section',
         'teacher'
@@ -80,13 +82,13 @@ class AttendanceAdmin(admin.ModelAdmin):
     date_hierarchy = 'date'
     ordering = ['-date', '-timestamp']
     
-    # Make status and session editable directly in the list view
-    list_editable = ['status', 'session']
+    # Make status, session, AND gender editable directly in the list view
+    list_editable = ['status', 'session', 'gender']  # ADD gender HERE
     
     # Fields to display when viewing/editing an individual record - ALL EDITABLE
     fieldsets = (
         ('Student Information', {
-            'fields': ('student_name', 'student_lrn')
+            'fields': ('student_name', 'student_lrn', 'gender')  # ADD gender HERE
         }),
         ('Attendance Details', {
             'fields': ('teacher', 'date', 'session', 'status')
@@ -102,6 +104,8 @@ class AttendanceAdmin(admin.ModelAdmin):
     
     # Show 50 records per page
     list_per_page = 50
+    
+    # ... rest of the methods stay the same ...
     
     def get_teacher_name(self, obj):
         full_name = f"{obj.teacher.user.first_name} {obj.teacher.user.last_name}".strip()
