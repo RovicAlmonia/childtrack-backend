@@ -370,6 +370,7 @@ class PublicAttendanceListView(generics.ListAPIView):
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
 
+
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def generate_sf2_excel(request):
@@ -497,17 +498,29 @@ def generate_sf2_excel(request):
         red_fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
         green_fill = PatternFill(start_color='00B050', end_color='00B050', fill_type='solid')  # Better green
         
-        # Triangle font - positioned at corners with proper size
-        triangle_font = Font(color="00B050", size=28, bold=True)
+        # Triangle font - LARGER SIZE for better corner visibility
+        triangle_font = Font(color="00B050", size=36, bold=True)
         
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
         
-        # CORNER ALIGNMENTS for triangles - CORRECTED
-        # AM (morning) = ◢ bottom-right
-        bottom_right_alignment = Alignment(horizontal='right', vertical='bottom', wrap_text=False, indent=0)
-        # PM (afternoon) = ◤ top-left  
-        top_left_alignment = Alignment(horizontal='left', vertical='top', wrap_text=False, indent=0)
+        # CORNER ALIGNMENTS for triangles - PRECISE POSITIONING
+        # AM (morning) = ◢ bottom-right corner
+        bottom_right_alignment = Alignment(
+            horizontal='right', 
+            vertical='bottom', 
+            wrap_text=False, 
+            indent=0,
+            shrink_to_fit=False
+        )
+        # PM (afternoon) = ◤ top-left corner
+        top_left_alignment = Alignment(
+            horizontal='left', 
+            vertical='top', 
+            wrap_text=False, 
+            indent=0,
+            shrink_to_fit=False
+        )
 
         # Use the first sheet from the template
         if len(wb.sheetnames) > 0:
@@ -564,34 +577,42 @@ def generate_sf2_excel(request):
         days_in_month = monthrange(year, month)[1]
         print(f"📅 Days in {month_name} {year}: {days_in_month}")
 
-        # Build day-to-column mapping ONLY FOR WEEKDAYS (Mon-Fri)
+        # Build day-to-column mapping based on CALENDAR ALIGNMENT
         day_columns = {}  # {day_number: column_index}
         from datetime import date
         
-        print("\n📅 Filling weekday headers starting at Column D...")
-        current_col = first_day_column  # Start at column D
+        print("\n📅 Filling calendar-aligned weekday headers starting at Column D...")
         
+        # First, figure out what day of week the 1st falls on
+        first_date = date(year, month, 1)
+        first_weekday = first_date.weekday()  # 0=Mon, 1=Tue, ..., 6=Sun
+        
+        print(f"    Month starts on: {day_names[first_weekday] if first_weekday < 5 else 'WEEKEND'}")
+        
+        # Fill ONLY the 5 weekday columns (Mon-Fri) in day_row
+        for day_idx in range(5):  # 0=Mon to 4=Fri
+            col = first_day_column + day_idx
+            unmerge_and_write(ws, day_row, col, day_names[day_idx], center_alignment)
+        
+        # Now map each date to its correct weekday column
         for day in range(1, days_in_month + 1):
             current_date = date(year, month, day)
             day_of_week = current_date.weekday()  # 0=Monday, 6=Sunday
             
             # ONLY process weekdays (Monday=0 to Friday=4)
             if day_of_week < 5:
-                day_columns[day] = current_col
+                # Column position based on day of week: Mon=D(4), Tue=E(5), ..., Fri=H(8)
+                col_idx = first_day_column + day_of_week
+                day_columns[day] = col_idx
                 
                 # Fill date in row 11
-                unmerge_and_write(ws, date_row, current_col, day, center_alignment)
+                unmerge_and_write(ws, date_row, col_idx, day, center_alignment)
                 
-                # Fill day name in row 12
-                day_name = day_names[day_of_week]
-                unmerge_and_write(ws, day_row, current_col, day_name, center_alignment)
-                
-                print(f"    Day {day} ({current_date.strftime('%Y-%m-%d')}): {day_name} at column {current_col}")
-                current_col += 1  # Move to next column only for weekdays
+                print(f"    Day {day} ({current_date.strftime('%Y-%m-%d')}): {day_names[day_of_week]} at column {col_idx}")
             else:
                 print(f"    Day {day} ({current_date.strftime('%Y-%m-%d')}): WEEKEND - SKIPPED")
         
-        print(f"✓ Filled {len(day_columns)} weekday columns")
+        print(f"✓ Filled {len(day_columns)} weekday dates")
 
         # Helper function to check if cell is merged
         def is_merged_cell(ws, row, col):
