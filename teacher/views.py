@@ -498,16 +498,28 @@ def generate_sf2_excel(request):
         green_fill = PatternFill(start_color='00B050', end_color='00B050', fill_type='solid')
         
         # Triangle font - LARGE size to fill entire cell as half-triangle
-        triangle_font = Font(color="00B050", size=48, bold=True)
+        triangle_font = Font(color="00B050", size=44, bold=True)
         
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
         
-        # CORNER ALIGNMENTS for triangles
+        # CORNER ALIGNMENTS for triangles - properly contained within cell borders
         # AM (morning) = ◤ top-left
-        top_left_alignment = Alignment(horizontal='left', vertical='top', wrap_text=False, indent=0)
+        top_left_alignment = Alignment(
+            horizontal='left', 
+            vertical='top', 
+            wrap_text=False, 
+            shrink_to_fit=False,
+            indent=0
+        )
         # PM (afternoon) = ◢ bottom-right
-        bottom_right_alignment = Alignment(horizontal='right', vertical='bottom', wrap_text=False, indent=0)
+        bottom_right_alignment = Alignment(
+            horizontal='right', 
+            vertical='bottom', 
+            wrap_text=False, 
+            shrink_to_fit=False,
+            indent=0
+        )
 
         # Use the first sheet from the template
         if len(wb.sheetnames) > 0:
