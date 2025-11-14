@@ -369,8 +369,6 @@ class PublicAttendanceListView(generics.ListAPIView):
     serializer_class = AttendanceSerializer
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
-
-
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def generate_sf2_excel(request):
@@ -595,7 +593,12 @@ def generate_sf2_excel(request):
             unmerge_and_write(ws, day_row, col, day_names[day_idx], center_alignment)
         print(f"✓ Day names filled in row {day_row}, columns D-H")
         
-        # Now map each date (1-31) to its correct weekday column
+        # Track which dates go in each column (for multi-week display)
+        week_tracker = {}  # {column: [dates]}
+        for col_idx in range(first_day_column, first_day_column + 5):
+            week_tracker[col_idx] = []
+        
+        # Map each date (1-31) to its correct weekday column
         for day in range(1, days_in_month + 1):
             current_date = date(year, month, day)
             day_of_week = current_date.weekday()  # 0=Monday, 6=Sunday
@@ -605,13 +608,17 @@ def generate_sf2_excel(request):
                 # Column based on day of week: Mon=D(4), Tue=E(5), Wed=F(6), Thu=G(7), Fri=H(8)
                 col_idx = first_day_column + day_of_week
                 day_columns[day] = col_idx
-                
-                # Fill date number in row 11 under the correct weekday column
-                unmerge_and_write(ws, date_row, col_idx, day, center_alignment)
+                week_tracker[col_idx].append(day)
                 
                 print(f"    Day {day:2d} ({current_date.strftime('%Y-%m-%d')}): {day_names[day_of_week]} → Column {col_idx}")
             else:
                 print(f"    Day {day:2d} ({current_date.strftime('%Y-%m-%d')}): WEEKEND - SKIPPED")
+        
+        # Fill date headers in row 11 - show all dates separated by commas
+        for col_idx in range(first_day_column, first_day_column + 5):
+            if week_tracker[col_idx]:
+                date_str = ', '.join(map(str, week_tracker[col_idx]))
+                unmerge_and_write(ws, date_row, col_idx, date_str, center_alignment)
         
         print(f"✓ Mapped {len(day_columns)} weekday dates to columns D-H")
 
