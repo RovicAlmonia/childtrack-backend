@@ -32,9 +32,13 @@ class Attendance(models.Model):
     gender = models.CharField(max_length=10, choices=GENDER_CHOICES, default='Male')  # NEW FIELD
     date = models.DateField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Present')
-    session = models.CharField(max_length=10, blank=True, null=True)  # AM or PM
     qr_code_data = models.TextField(blank=True, null=True)
     timestamp = models.DateTimeField(auto_now_add=True)
+    session = models.CharField(
+        max_length=2,
+        choices=[('AM', 'Morning'), ('PM', 'Afternoon')],
+        null=True,
+        blank=True
     
     class Meta:
         ordering = ['-date', '-timestamp']
@@ -42,6 +46,8 @@ class Attendance(models.Model):
     
     def __str__(self):
         return f"{self.student_name} - {self.status} - {self.date}"
+
+ 
 
 class Absence(models.Model):
     teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='absences')
