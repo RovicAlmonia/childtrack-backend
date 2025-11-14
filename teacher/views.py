@@ -497,8 +497,8 @@ def generate_sf2_excel(request):
         red_fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
         green_fill = PatternFill(start_color='00B050', end_color='00B050', fill_type='solid')
         
-        # Triangle font - proper size for half-cell triangles
-        triangle_font = Font(color="00B050", size=20, bold=True)
+        # Triangle font - LARGE size to fill entire cell as half-triangle
+        triangle_font = Font(color="00B050", size=48, bold=True)
         
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
@@ -564,35 +564,37 @@ def generate_sf2_excel(request):
         days_in_month = monthrange(year, month)[1]
         print(f"📅 Days in {month_name} {year}: {days_in_month}")
 
-        # Build day-to-column mapping - ALL DAYS including weekends
-        # Days 1-31 map to columns D-AA (4-27 for days 1-24, then 28-34 for days 25-31)
+        # Build day-to-column mapping - ONLY WEEKDAYS (Mon-Fri)
         day_columns = {}  # {day_number: column_index}
         from datetime import date
         
-        print("\n📅 Filling calendar headers (dates 1-31 across columns D-AA)...")
+        print("\n📅 Filling weekday calendar headers (only Mon-Fri)...")
+        current_col = first_day_column  # Start at column D
         
         for day in range(1, days_in_month + 1):
             current_date = date(year, month, day)
             day_of_week = current_date.weekday()  # 0=Monday, 6=Sunday
             
-            # Map day to column: Column D (4) is day 1
-            col_idx = first_day_column + (day - 1)
-            day_columns[day] = col_idx
-            
-            # Fill date in row 11
-            unmerge_and_write(ws, date_row, col_idx, day, center_alignment)
-            
-            # Fill day name in row 12 (aligned with calendar)
-            day_name = day_names_short[day_of_week]
-            unmerge_and_write(ws, day_row, col_idx, day_name, center_alignment)
-            
-            # Determine if weekend
-            is_weekend = day_of_week >= 5  # Saturday=5, Sunday=6
-            weekend_marker = " (WEEKEND)" if is_weekend else ""
-            
-            print(f"    Day {day:2d} ({current_date.strftime('%Y-%m-%d')}): {day_name} at column {col_idx}{weekend_marker}")
+            # ONLY process weekdays (Monday=0 to Friday=4)
+            if day_of_week < 5:  # Weekday check FIRST
+                day_columns[day] = current_col
+                
+                # Fill date in row 11
+                unmerge_and_write(ws, date_row, current_col, day, center_alignment)
+                
+                # Fill day name in row 12 (aligned with calendar)
+                # day_of_week is 0-4 for Mon-Fri, so it's safe to use as index
+                day_name = day_names_short[day_of_week]
+                unmerge_and_write(ws, day_row, current_col, day_name, center_alignment)
+                
+                print(f"    Day {day:2d} ({current_date.strftime('%Y-%m-%d')}): {day_name} at column {current_col}")
+                current_col += 1  # Move to next column only for weekdays
+            else:
+                # Weekend - just log and skip
+                day_name_full = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][day_of_week]
+                print(f"    Day {day:2d} ({current_date.strftime('%Y-%m-%d')}): {day_name_full} WEEKEND - SKIPPED")
         
-        print(f"✓ Filled {len(day_columns)} calendar days across columns")
+        print(f"✓ Filled {len(day_columns)} weekday columns")
 
         # Helper function to check if cell is merged
         def is_merged_cell(ws, row, col):
@@ -612,7 +614,7 @@ def generate_sf2_excel(request):
                 # Write FULL NAME to Column B
                 unmerge_and_write(ws, row_num, name_column, name, left_alignment)
 
-                # Fill attendance for ALL days (including weekends)
+                # Fill attendance ONLY for weekdays (skip weekends)
                 for day, col_idx in day_columns.items():
                     # Skip future dates
                     if year == current_year and month == current_month and day > current_day:
