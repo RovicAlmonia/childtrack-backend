@@ -370,6 +370,7 @@ class PublicAttendanceListView(generics.ListAPIView):
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
 
+
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def generate_sf2_excel(request):
@@ -497,8 +498,8 @@ def generate_sf2_excel(request):
         red_fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
         green_fill = PatternFill(start_color='00B050', end_color='00B050', fill_type='solid')
         
-        # Triangle font - sized to fit within cell boundaries
-        triangle_font = Font(color="00B050", size=36, bold=True)
+        # Triangle font - sized to fit within cell boundaries without overflow
+        triangle_font = Font(color="00B050", size=28, bold=True)
         
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
@@ -728,3 +729,4 @@ def generate_sf2_excel(request):
             {"error": f"Failed to generate SF2 Excel: {str(e)}"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
