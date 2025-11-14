@@ -369,7 +369,6 @@ class PublicAttendanceListView(generics.ListAPIView):
     serializer_class = AttendanceSerializer
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
-
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def generate_sf2_excel(request):
@@ -382,8 +381,8 @@ def generate_sf2_excel(request):
     - Column B (Row 14+): FULL NAME (Last Name, First Name Middle Name)
     
     Visual Legend:
-    - AM Present (Morning): Green triangle ◢ at BOTTOM-RIGHT corner of cell
-    - PM Present (Afternoon): Green triangle ◤ at TOP-LEFT corner of cell  
+    - AM Present (Morning): Green triangle ◤ at TOP-LEFT corner of cell
+    - PM Present (Afternoon): Green triangle ◢ at BOTTOM-RIGHT corner of cell  
     - Full Day Present (AM + PM): Solid green fill
     - Absent: Solid red fill
     
@@ -504,18 +503,18 @@ def generate_sf2_excel(request):
         left_alignment = Alignment(horizontal='left', vertical='center')
         
         # CORNER ALIGNMENTS for triangles - properly contained within cell borders
-        # AM (morning) = ◢ bottom-right
-        bottom_right_alignment = Alignment(
-            horizontal='right', 
-            vertical='bottom', 
+        # AM (morning) = ◤ top-left
+        top_left_alignment = Alignment(
+            horizontal='left', 
+            vertical='top', 
             wrap_text=False, 
             shrink_to_fit=False,
             indent=0
         )
-        # PM (afternoon) = ◤ top-left
-        top_left_alignment = Alignment(
-            horizontal='left', 
-            vertical='top', 
+        # PM (afternoon) = ◢ bottom-right
+        bottom_right_alignment = Alignment(
+            horizontal='right', 
+            vertical='bottom', 
             wrap_text=False, 
             shrink_to_fit=False,
             indent=0
@@ -662,18 +661,18 @@ def generate_sf2_excel(request):
                             filled_count += 1
 
                         # HALF DAY PRESENT - TRIANGLES AT CORNERS
-                        # AM only = ◢ at BOTTOM-RIGHT
+                        # AM only = ◤ at TOP-LEFT
                         elif has_am and not has_pm:
-                            cell.value = "◢"
-                            cell.font = triangle_font
-                            cell.alignment = bottom_right_alignment
-                            filled_count += 1
-                            
-                        # PM only = ◤ at TOP-LEFT
-                        elif has_pm and not has_am:
                             cell.value = "◤"
                             cell.font = triangle_font
                             cell.alignment = top_left_alignment
+                            filled_count += 1
+                            
+                        # PM only = ◢ at BOTTOM-RIGHT
+                        elif has_pm and not has_am:
+                            cell.value = "◢"
+                            cell.font = triangle_font
+                            cell.alignment = bottom_right_alignment
                             filled_count += 1
                             
                     except Exception as e:
