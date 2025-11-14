@@ -500,8 +500,8 @@ def generate_sf2_excel(request):
         red_fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
         green_fill = PatternFill(start_color='00B050', end_color='00B050', fill_type='solid')
         
-        # Triangle font - LARGER size to fill more of the cell
-        triangle_font = Font(color="00B050", size=40, bold=True)
+        # Triangle font - VERY LARGE size to align with cell diagonal
+        triangle_font = Font(color="00B050", size=52, bold=True)
         
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
