@@ -386,8 +386,8 @@ def generate_sf2_excel(request):
     - Column B (Row 14+): FULL NAME (Last Name, First Name Middle Name)
     
     Visual Legend:
-    - AM Present (Morning): Green triangle ◤ at TOP-LEFT corner of cell
-    - PM Present (Afternoon): Green triangle ◢ at BOTTOM-RIGHT corner of cell  
+    - AM Present (Morning): Green triangle ◤ - Middle vertical, Justify horizontal (fills left side)
+    - PM Present (Afternoon): Green triangle ◢ - Middle vertical, Left horizontal (on right side)
     - Full Day Present (AM + PM): Solid green fill
     - Absent: Solid red fill
     
@@ -473,6 +473,7 @@ def generate_sf2_excel(request):
                 session = att.session.upper()
             elif att.timestamp:
                 # Use Philippine timezone for consistent session determination
+                from zoneinfo import ZoneInfo
                 ph_time = att.timestamp.astimezone(ZoneInfo('Asia/Manila'))
                 session = 'AM' if ph_time.hour < 12 else 'PM'
             else:
@@ -505,17 +506,28 @@ def generate_sf2_excel(request):
         red_fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
         green_fill = PatternFill(start_color='00B050', end_color='00B050', fill_type='solid')
         
-        # Triangle font - LARGE size to fill entire cell as half-triangle
+        # Triangle font - LARGE size (48pt) with green color
         triangle_font = Font(color="00B050", size=48, bold=True)
         
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
         
-        # CORNER ALIGNMENTS for triangles
-        # AM (morning) = ◤ top-left
-        top_left_alignment = Alignment(horizontal='left', vertical='top', wrap_text=False, indent=0)
-        # PM (afternoon) = ◢ bottom-right
-        bottom_right_alignment = Alignment(horizontal='right', vertical='bottom', wrap_text=False, indent=0)
+        # CORRECT TRIANGLE ALIGNMENTS
+        # AM (morning) = ◤ - Middle vertical + Justify horizontal (left-aligned effect)
+        am_triangle_alignment = Alignment(
+            horizontal='justify',  # Justify pushes content to fill space
+            vertical='center',     # Middle vertical alignment
+            wrap_text=False,
+            shrink_to_fit=False
+        )
+        
+        # PM (afternoon) = ◢ - Middle vertical + Left horizontal
+        pm_triangle_alignment = Alignment(
+            horizontal='left',     # Left horizontal alignment
+            vertical='center',     # Middle vertical alignment
+            wrap_text=False,
+            shrink_to_fit=False
+        )
 
         # Use the first sheet from the template
         if len(wb.sheetnames) > 0:
@@ -640,10 +652,11 @@ def generate_sf2_excel(request):
                         has_am = attendance_data[name]['days'][day]['am']
                         has_pm = attendance_data[name]['days'][day]['pm']
 
-                        # Clear existing content
+                        # Clear existing content and reset formatting
                         cell.value = None
-                        cell.fill = PatternFill()
+                        cell.fill = PatternFill(fill_type=None)
                         cell.font = Font()
+                        cell.alignment = center_alignment
 
                         # Apply attendance marking logic
                         # ABSENT - neither AM nor PM present
@@ -658,20 +671,22 @@ def generate_sf2_excel(request):
                             cell.alignment = center_alignment
                             filled_count += 1
 
-                        # HALF DAY PRESENT - TRIANGLES AT CORNERS
-                        # AM only = ◤ at TOP-LEFT
+                        # HALF DAY PRESENT - TRIANGLES
+                        # AM only = ◤ (Middle + Justify)
                         elif has_am and not has_pm:
                             cell.value = "◤"
                             cell.font = triangle_font
-                            cell.alignment = top_left_alignment
+                            cell.alignment = am_triangle_alignment
                             filled_count += 1
+                            print(f"    ✓ AM triangle (◤) for day {day}: Middle+Justify")
                             
-                        # PM only = ◢ at BOTTOM-RIGHT
+                        # PM only = ◢ (Middle + Left)
                         elif has_pm and not has_am:
                             cell.value = "◢"
                             cell.font = triangle_font
-                            cell.alignment = bottom_right_alignment
+                            cell.alignment = pm_triangle_alignment
                             filled_count += 1
+                            print(f"    ✓ PM triangle (◢) for day {day}: Middle+Left")
                             
                     except Exception as e:
                         print(f"    ❌ Error filling day {day}: {e}")
@@ -709,7 +724,8 @@ def generate_sf2_excel(request):
 
     except TeacherProfile.DoesNotExist:
         return Response(
-            {"error": "Teacher profile not found."},status=status.HTTP_404_NOT_FOUND
+            {"error": "Teacher profile not found."},
+            status=status.HTTP_404_NOT_FOUND
         )
     except Exception as e:
         # Log the full error for debugging
