@@ -370,7 +370,6 @@ class PublicAttendanceListView(generics.ListAPIView):
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
 
-
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def generate_sf2_excel(request):
@@ -435,8 +434,8 @@ def generate_sf2_excel(request):
         month_names = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", 
                       "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
         
-        # Day names - EXACT ORDER: Mon, Tue, Wed, Thu, Fri, Sat, Sun (abbreviated)
-        day_names_short = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        # Day names - EXACT ORDER: Mon, Tue, Wed, Thu, Fri only (weekdays)
+        day_names_short = ["Mon", "Tue", "Wed", "Thu", "Fri"]
 
         # Fetch attendance records for the SPECIFIC MONTH only
         attendances = Attendance.objects.filter(
