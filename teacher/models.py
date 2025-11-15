@@ -19,7 +19,7 @@ class Attendance(models.Model):
         ('Late', 'Late'),
         ('Drop-off', 'Drop-off'),
         ('Pick-up', 'Pick-up'),
-        ('Dropped-out', 'Dropped-out'),
+        ('Dropped out', 'Dropped out'),
 
     ]
     
