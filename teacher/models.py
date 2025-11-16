@@ -12,6 +12,7 @@ class TeacherProfile(models.Model):
     def __str__(self):
         return self.user.username
 
+
 class Attendance(models.Model):
     STATUS_CHOICES = [
         ('Present', 'Present'),
@@ -19,7 +20,7 @@ class Attendance(models.Model):
         ('Late', 'Late'),
         ('Drop-off', 'Drop-off'),
         ('Pick-up', 'Pick-up'),
-        ('Dropped Out', 'Dropped Out'),  # Added new status
+        ('Dropped Out', 'Dropped Out'),
     ]
     
     GENDER_CHOICES = [
@@ -41,7 +42,7 @@ class Attendance(models.Model):
         null=True,
         blank=True
     )
-    reason = models.TextField(blank=True, null=True)  # Added for dropout reason
+    reason = models.TextField(blank=True, null=True)
     
     class Meta:
         ordering = ['-date', '-timestamp']
@@ -50,23 +51,8 @@ class Attendance(models.Model):
     def __str__(self):
         return f"{self.student_name} - {self.status} - {self.date}"
 
+
 class UnauthorizedPerson(models.Model):
-    teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='unauthorized_persons')
-    name = models.CharField(max_length=100)
-    address = models.TextField()
-    age = models.IntegerField()
-    student_name = models.CharField(max_length=100)
-    guardian_name = models.CharField(max_length=100)
-    relation = models.CharField(max_length=50)
-    contact = models.CharField(max_length=15)
-    photo = models.TextField(blank=True, null=True)
-    timestamp = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
-        ordering = ['-timestamp']
-    
-    def __str__(self):
-        return f"{self.name} - {self.student_name}"class UnauthorizedPerson(models.Model):
     teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='unauthorized_persons')
     name = models.CharField(max_length=100)
     address = models.TextField()
