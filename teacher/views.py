@@ -738,4 +738,14 @@ def generate_sf2_excel(request):
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
 
-    except TeacherProfile.DoesNotEx
+    except TeacherProfile.DoesNotExist:
+        return Response(
+            {"error": "Teacher profile not found"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        print(f"SF2 generation error: {traceback.format_exc()}")
+        return Response(
+            {"error": f"Failed to generate SF2: {str(e)}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
