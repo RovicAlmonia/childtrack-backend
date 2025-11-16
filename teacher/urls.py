@@ -12,6 +12,7 @@ from .views import (
     UnauthorizedPersonDetailView,
     PublicAttendanceListView,
     generate_sf2_excel,
+    bulk_update_attendance,
 )
 
 urlpatterns = [
@@ -20,6 +21,7 @@ urlpatterns = [
     
     path('attendance/', AttendanceView.as_view(), name='attendance-list'),
     path('attendance/<int:pk>/', AttendanceDetailView.as_view(), name='attendance-detail'),
+    path('attendance/bulk-update/', bulk_update_attendance, name='bulk-update-attendance'),
     path('attendance/public/', PublicAttendanceListView.as_view(), name='public-attendance-list'),
     
     path('absence/', AbsenceView.as_view(), name='absence-list'),
