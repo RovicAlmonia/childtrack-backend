@@ -40,7 +40,7 @@ class AttendanceSerializer(serializers.ModelSerializer):
         read_only_fields = ['timestamp', 'teacher']
 
 class UnauthorizedPersonSerializer(serializers.ModelSerializer):
-    teacher_name = serializers.CharField(source='teacher.user.first_name', read_only=True)
+    teacher_name = serializers.CharField(source='teacher.name', read_only=True)  # Changed from teacher.user.first_name
     
     class Meta:
         model = UnauthorizedPerson
