@@ -5,8 +5,8 @@ from .models import TeacherProfile, Attendance, Absence, Dropout, UnauthorizedPe
 class TeacherProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(write_only=True)
     password = serializers.CharField(write_only=True)
-    name = serializers.CharField(write_only=True)  # Full name
-    grade = serializers.CharField(source='section', required=False)  # Alias for section
+    name = serializers.CharField(write_only=True)
+    grade = serializers.CharField(source='section', required=False)
     
     class Meta:
         model = TeacherProfile
@@ -18,9 +18,8 @@ class TeacherProfileSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         username = validated_data.pop('username')
         password = validated_data.pop('password')
-        name = validated_data.pop('name', username)  # Use name if provided, else username
+        name = validated_data.pop('name', username)
         
-        # Create user with full name
         user = User.objects.create_user(
             username=username, 
             password=password,
@@ -33,7 +32,7 @@ class TeacherProfileSerializer(serializers.ModelSerializer):
 class AttendanceSerializer(serializers.ModelSerializer):
     teacher_name = serializers.CharField(source='teacher.user.first_name', read_only=True)
     lrn = serializers.CharField(source='student_lrn', required=False)
-    qr_data = serializers.CharField(source='qr_code_data', required=False)  # Alias for qr_code_data
+    qr_data = serializers.CharField(source='qr_code_data', required=False)
     
     class Meta:
         model = Attendance
