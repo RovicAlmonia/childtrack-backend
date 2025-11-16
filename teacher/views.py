@@ -33,11 +33,30 @@ class RegisterView(generics.CreateAPIView):
     authentication_classes = []
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
+        data = request.data
         try:
+            # Step 1: Create the User first
+            username = data.get("name").replace(" ", "").lower()
+            password = data.get("password")
+
+            if not password:
+                return Response({"error": "Password is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+            if User.objects.filter(username=username).exists():
+                return Response({"error": "Username already exists."}, status=status.HTTP_400_BAD_REQUEST)
+
+            user = User.objects.create_user(username=username, password=password)
+            user.first_name = data.get("name")
+            user.save()
+
+            # Step 2: Create the TeacherProfile
+            serializer = self.get_serializer(data=data)
             serializer.is_valid(raise_exception=True)
-            teacher_profile = serializer.save()
-            token, _ = Token.objects.get_or_create(user=teacher_profile.user)
+            teacher_profile = serializer.save(user=user)  # Pass the User object
+
+            # Step 3: Generate token
+            token, _ = Token.objects.get_or_create(user=user)
+
             return Response({
                 "message": "Registration successful!",
                 "token": token.key,
@@ -48,15 +67,11 @@ class RegisterView(generics.CreateAPIView):
                     "section": teacher_profile.section,
                 }
             }, status=status.HTTP_201_CREATED)
+
         except IntegrityError:
-            return Response(
-                {"error": "Username already exists."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"error": "Username already exists."}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            return Response(
-                {"error": f"Registration failed: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            return Response({"error": f"Registration failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             )
 
 # -----------------------------
