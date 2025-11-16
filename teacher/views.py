@@ -1,4 +1,5 @@
 from django.contrib.auth import authenticate
+from django.contrib.auth.models import User
 from django.db import IntegrityError
 from django.http import FileResponse
 from rest_framework import generics, permissions, status
