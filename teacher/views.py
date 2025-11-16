@@ -615,7 +615,8 @@ def generate_sf2_excel(request):
             
             cell_coord = ws.cell(row=row, column=col).coordinate
             
-            for merged_range in list(ws.merged_cells.ranges):if cell_coord in merged_range:
+            for merged_range in list(ws.merged_cells.ranges):
+                if cell_coord in merged_range:
                     ws.unmerge_cells(str(merged_range))
                     print(f"    🔓 Unmerged {merged_range}")
                     break
@@ -679,7 +680,7 @@ def generate_sf2_excel(request):
                 unmerge_and_write(ws, row_num, name_column, name, left_alignment)
 
                 for day, col_idx in day_columns.items():
-                    if year == current_year and month == current_month and day > current_day: 
+                    if year == current_year and month == current_month and day > current_day:
                         continue
 
                     try:
