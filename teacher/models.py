@@ -1,8 +1,10 @@
 from django.db import models
 from django.contrib.auth.models import User
 
+
 class TeacherProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
+    name = models.CharField(max_length=100)  # Add this field
     age = models.IntegerField()
     gender = models.CharField(max_length=10)
     section = models.CharField(max_length=50)
@@ -10,8 +12,7 @@ class TeacherProfile(models.Model):
     address = models.TextField()
     
     def __str__(self):
-        return self.user.username
-
+        return self.name  # Changed from self.user.username
 
 class Attendance(models.Model):
     STATUS_CHOICES = [
