@@ -5,7 +5,6 @@ from .models import TeacherProfile, Attendance, UnauthorizedPerson
 class TeacherProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(write_only=True)
     password = serializers.CharField(write_only=True)
-    name = serializers.CharField(write_only=True)
     grade = serializers.CharField(source='section', required=False)
     
     class Meta:
@@ -18,12 +17,12 @@ class TeacherProfileSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         username = validated_data.pop('username')
         password = validated_data.pop('password')
-        name = validated_data.pop('name', username)
+        name = validated_data.get('name')  # Get name from validated_data
         
         user = User.objects.create_user(
             username=username, 
             password=password,
-            first_name=name
+            first_name=name  # Store name in User.first_name for compatibility
         )
         
         teacher_profile = TeacherProfile.objects.create(user=user, **validated_data)
@@ -48,3 +47,4 @@ class UnauthorizedPersonSerializer(serializers.ModelSerializer):
         fields = ['id', 'teacher', 'teacher_name', 'name', 'address', 'age', 'student_name', 
                   'guardian_name', 'relation', 'contact', 'photo', 'timestamp']
         read_only_fields = ['timestamp', 'teacher']
+
