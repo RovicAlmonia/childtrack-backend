@@ -6,11 +6,10 @@ from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.decorators import api_view, permission_classes
-from .models import TeacherProfile, Attendance, Absence, Dropout, UnauthorizedPerson
+from .models import TeacherProfile, Attendance, Dropout, UnauthorizedPerson
 from .serializers import (
     TeacherProfileSerializer, 
     AttendanceSerializer,
-    AbsenceSerializer,
     DropoutSerializer,
     UnauthorizedPersonSerializer
 )
@@ -169,32 +168,6 @@ class AttendanceView(APIView):
                 ph_time = now.astimezone(ZoneInfo('Asia/Manila'))
                 data['session'] = 'AM' if ph_time.hour < 12 else 'PM'
 
-            status_value = data.get('status', 'Present')
-
-            if status_value == 'Absent':
-                Absence.objects.create(
-                    teacher=teacher_profile,
-                    student_name=data.get('student_name', 'Unknown'),
-                    date=data.get('date'),
-                    reason=data.get('reason', 'Marked absent during attendance')
-                )
-                return Response({
-                    "message": "Student marked as absent and moved to absences",
-                    "student_name": data.get('student_name')
-                }, status=status.HTTP_201_CREATED)
-
-            elif status_value == 'Dropped Out':
-                Dropout.objects.create(
-                    teacher=teacher_profile,
-                    student_name=data.get('student_name', 'Unknown'),
-                    date=data.get('date'),
-                    reason=data.get('reason', 'Marked as dropped out during attendance')
-                )
-                return Response({
-                    "message": "Student marked as dropout and moved to dropouts",
-                    "student_name": data.get('student_name')
-                }, status=status.HTTP_201_CREATED)
-
             serializer = AttendanceSerializer(data=data)
             if serializer.is_valid():
                 serializer.save(teacher=teacher_profile)
@@ -217,23 +190,12 @@ class AttendanceDetailView(APIView):
             
             new_status = request.data.get('status')
             
-            if new_status == 'Absent':
-                Absence.objects.create(
-                    teacher=teacher_profile,
-                    student_name=attendance.student_name,
-                    date=attendance.date,
-                    reason=request.data.get('reason', 'Updated from attendance to absent')
-                )
-                attendance.delete()
-                return Response({
-                    "message": "Student moved to absences",
-                    "student_name": attendance.student_name
-                }, status=status.HTTP_200_OK)
-            
-            elif new_status == 'Dropped Out':
+            if new_status == 'Dropped Out':
                 Dropout.objects.create(
                     teacher=teacher_profile,
                     student_name=attendance.student_name,
+                    student_lrn=attendance.student_lrn,
+                    gender=attendance.gender,
                     date=attendance.date,
                     reason=request.data.get('reason', 'Updated from attendance to dropout')
                 )
@@ -273,15 +235,14 @@ class AttendanceDetailView(APIView):
 def bulk_update_attendance(request):
     """
     Bulk update attendance records.
-    Automatically moves students to Absences or Dropouts based on status.
+    Automatically moves students to Dropouts based on status.
     
     Expected payload:
     {
         "updates": [
             {
                 "id": 1,
-                "status": "Absent",
-                "reason": "Sick"
+                "status": "Absent"
             },
             {
                 "id": 2,
@@ -303,7 +264,6 @@ def bulk_update_attendance(request):
         
         results = {
             'updated': [],
-            'moved_to_absence': [],
             'moved_to_dropout': [],
             'errors': []
         }
@@ -323,26 +283,12 @@ def bulk_update_attendance(request):
                 
                 attendance = Attendance.objects.get(pk=attendance_id, teacher=teacher_profile)
                 
-                # Handle Absent status
-                if new_status == 'Absent':
-                    Absence.objects.create(
-                        teacher=teacher_profile,
-                        student_name=attendance.student_name,
-                        date=attendance.date,
-                        reason=reason or 'Marked absent during attendance update'
-                    )
-                    attendance.delete()
-                    results['moved_to_absence'].append({
-                        'id': attendance_id,
-                        'student_name': attendance.student_name,
-                        'date': str(attendance.date)
-                    })
-                
-                # Handle Dropped Out status
-                elif new_status == 'Dropped Out':
+                if new_status == 'Dropped Out':
                     Dropout.objects.create(
                         teacher=teacher_profile,
                         student_name=attendance.student_name,
+                        student_lrn=attendance.student_lrn,
+                        gender=attendance.gender,
                         date=attendance.date,
                         reason=reason or 'Marked as dropped out during attendance update'
                     )
@@ -352,10 +298,7 @@ def bulk_update_attendance(request):
                         'student_name': attendance.student_name,
                         'date': str(attendance.date)
                     })
-                
-                # Handle other status updates
                 else:
-                    # Update only the fields that are provided
                     if 'status' in update_data:
                         attendance.status = new_status
                     if 'gender' in update_data:
@@ -404,60 +347,6 @@ def bulk_update_attendance(request):
             {"error": f"Bulk update failed: {str(e)}"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
-# -----------------------------
-# ABSENCE VIEWS
-# -----------------------------
-class AbsenceView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request):
-        try:
-            teacher_profile = TeacherProfile.objects.get(user=request.user)
-            absences = Absence.objects.filter(teacher=teacher_profile).order_by('-date')
-            serializer = AbsenceSerializer(absences, many=True)
-            return Response(serializer.data)
-        except TeacherProfile.DoesNotExist:
-            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
-
-    def post(self, request):
-        try:
-            teacher_profile = TeacherProfile.objects.get(user=request.user)
-            serializer = AbsenceSerializer(data=request.data)
-            if serializer.is_valid():
-                serializer.save(teacher=teacher_profile)
-                return Response(serializer.data, status=status.HTTP_201_CREATED)
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        except TeacherProfile.DoesNotExist:
-            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
-
-class AbsenceDetailView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def put(self, request, pk):
-        try:
-            teacher_profile = TeacherProfile.objects.get(user=request.user)
-            absence = Absence.objects.get(pk=pk, teacher=teacher_profile)
-            serializer = AbsenceSerializer(absence, data=request.data, partial=True)
-            if serializer.is_valid():
-                serializer.save()
-                return Response(serializer.data)
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        except Absence.DoesNotExist:
-            return Response({"error": "Absence not found"}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    def delete(self, request, pk):
-        try:
-            teacher_profile = TeacherProfile.objects.get(user=request.user)
-            absence = Absence.objects.get(pk=pk, teacher=teacher_profile)
-            absence.delete()
-            return Response(status=status.HTTP_204_NO_CONTENT)
-        except Absence.DoesNotExist:
-            return Response({"error": "Absence not found"}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # -----------------------------
 # DROPOUT VIEWS
@@ -726,8 +615,7 @@ def generate_sf2_excel(request):
             
             cell_coord = ws.cell(row=row, column=col).coordinate
             
-            for merged_range in list(ws.merged_cells.ranges):
-                if cell_coord in merged_range:
+            for merged_range in list(ws.merged_cells.ranges):if cell_coord in merged_range:
                     ws.unmerge_cells(str(merged_range))
                     print(f"    🔓 Unmerged {merged_range}")
                     break
@@ -791,7 +679,8 @@ def generate_sf2_excel(request):
                 unmerge_and_write(ws, row_num, name_column, name, left_alignment)
 
                 for day, col_idx in day_columns.items():
-                    if year == current_year and month == current_month and day > current_day: continue
+                    if year == current_year and month == current_month and day > current_day: 
+                        continue
 
                     try:
                         if is_merged_cell(ws, row_num, col_idx):
@@ -878,4 +767,3 @@ def generate_sf2_excel(request):
             {"error": f"Failed to generate SF2 Excel: {str(e)}"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
