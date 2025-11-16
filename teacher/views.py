@@ -1,5 +1,5 @@
+# views.py
 from django.contrib.auth import authenticate
-from django.contrib.auth.models import User
 from django.db import IntegrityError
 from django.http import FileResponse
 from rest_framework import generics, permissions, status
@@ -7,22 +7,24 @@ from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.decorators import api_view, permission_classes
-from .models import TeacherProfile, Attendance, UnauthorizedPerson
+from .models import TeacherProfile, Attendance, Absence, Dropout, UnauthorizedPerson
 from .serializers import (
     TeacherProfileSerializer, 
     AttendanceSerializer,
+    AbsenceSerializer,
+    DropoutSerializer,
     UnauthorizedPersonSerializer
 )
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Alignment, Font
-from openpyxl.cell.cell import MergedCell
-from datetime import datetime, date
+from openpyxl.drawing.fill import GradientFillProperties, GradientStop
+from datetime import datetime
 from collections import defaultdict
 from calendar import monthrange
 from zoneinfo import ZoneInfo
 import io
 import json
-import traceback
+import re
 
 # -----------------------------
 # TEACHER REGISTRATION (Public)
@@ -32,126 +34,84 @@ class RegisterView(generics.CreateAPIView):
     serializer_class = TeacherProfileSerializer
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
-    
+
     def create(self, request, *args, **kwargs):
-        data = request.data
+        serializer = self.get_serializer(data=request.data)
         try:
-            # Validate required fields
-            username = data.get("username")
-            password = data.get("password")
-            name = data.get("name")
-            
-            if not username:
-                return Response({"error": "Username is required."}, status=status.HTTP_400_BAD_REQUEST)
-            if not password:
-                return Response({"error": "Password is required."}, status=status.HTTP_400_BAD_REQUEST)
-            if not name:
-                return Response({"error": "Name is required."}, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Check if username already exists
-            if User.objects.filter(username=username).exists():
-                return Response({"error": "Username already exists."}, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Create the User
-            user = User.objects.create_user(username=username, password=password)
-            user.first_name = name
-            user.save()
-            
-            # Create the TeacherProfile
-            serializer = self.get_serializer(data=data)
             serializer.is_valid(raise_exception=True)
-            teacher_profile = serializer.save(user=user)
-            
-            # Generate token
-            token, _ = Token.objects.get_or_create(user=user)
-            
+            teacher_profile = serializer.save()
+            token, _ = Token.objects.get_or_create(user=teacher_profile.user)
             return Response({
                 "message": "Registration successful!",
                 "token": token.key,
                 "teacher": {
                     "id": teacher_profile.id,
-                    "name": teacher_profile.name,
+                    "name": teacher_profile.user.first_name or teacher_profile.user.username,
                     "username": teacher_profile.user.username,
                     "section": teacher_profile.section,
                 }
             }, status=status.HTTP_201_CREATED)
-            
         except IntegrityError:
-            return Response({"error": "Username already exists."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Username already exists."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         except Exception as e:
-            print(f"Registration error: {traceback.format_exc()}")
-            return Response({"error": f"Registration failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(
+                {"error": f"Registration failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 # -----------------------------
 # TEACHER LOGIN (Public)
 # -----------------------------
-# -----------------------------
-# TEACHER LOGIN (Public)
-# -----------------------------
-# Replace the LoginView in your views.py with this corrected version:
-
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
 
     def post(self, request):
-        try:
-            username = request.data.get("username") or request.data.get("name")
-            password = request.data.get("password")
-            grade = request.data.get("grade")
+        username = request.data.get("username") or request.data.get("name")
+        password = request.data.get("password")
+        grade = request.data.get("grade")
 
-            print(f"Login attempt - Username: {username}, Grade: {grade}")  # Debug log
+        if not username or not password:
+            return Response(
+                {"error": "Username and password are required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-            if not username or not password:
-                return Response(
-                    {"error": "Username and password are required"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+        user = authenticate(username=username, password=password)
 
-            user = authenticate(username=username, password=password)
-            print(f"Authentication result: {user}")  # Debug log
+        if user:
+            try:
+                teacher_profile = TeacherProfile.objects.get(user=user)
 
-            if user:
-                try:
-                    teacher_profile = TeacherProfile.objects.get(user=user)
-                    print(f"Teacher profile found: {teacher_profile.section}")  # Debug log
-
-                    if grade and grade.lower() not in teacher_profile.section.lower():
-                        return Response(
-                            {"error": "Grade does not match your assigned section"},
-                            status=status.HTTP_400_BAD_REQUEST
-                        )
-
-                    token, _ = Token.objects.get_or_create(user=user)
-                    return Response({
-                        "token": token.key,
-                        "teacher": {
-                            "id": teacher_profile.id,
-                            "name": user.first_name or username,
-                            "username": username,
-                            "section": teacher_profile.section,
-                        }
-                    }, status=status.HTTP_200_OK)
-                    
-                except TeacherProfile.DoesNotExist:
-                    print(f"Teacher profile not found for user: {username}")  # Debug log
+                if grade and grade.lower() not in teacher_profile.section.lower():
                     return Response(
-                        {"error": "Teacher profile not found"},
+                        {"error": "Grade does not match your assigned section"},
                         status=status.HTTP_400_BAD_REQUEST
                     )
 
-            print(f"Invalid credentials for username: {username}")  # Debug log
-            return Response(
-                {"error": "Invalid credentials"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-            
-        except Exception as e:
-            print(f"Login error: {traceback.format_exc()}")  # Full error traceback
-            return Response(
-                {"error": f"Login failed: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+                token, _ = Token.objects.get_or_create(user=user)
+                return Response({
+                    "token": token.key,
+                    "teacher": {
+                        "id": teacher_profile.id,
+                        "name": user.first_name or username,
+                        "username": username,
+                        "section": teacher_profile.section,
+                    }
+                }, status=status.HTTP_200_OK)
+            except TeacherProfile.DoesNotExist:
+                return Response(
+                    {"error": "Teacher profile not found"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        return Response(
+            {"error": "Invalid credentials"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
 # -----------------------------
 # ATTENDANCE VIEWS
@@ -165,13 +125,13 @@ class AttendanceView(APIView):
             if not teacher_profile:
                 return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
 
-            date_param = request.query_params.get('date')
+            date = request.query_params.get('date')
             student = request.query_params.get('student')
             status_filter = request.query_params.get('status')
 
             queryset = Attendance.objects.filter(teacher=teacher_profile)
-            if date_param:
-                queryset = queryset.filter(date=date_param)
+            if date:
+                queryset = queryset.filter(date=date)
             if student:
                 queryset = queryset.filter(student_name__icontains=student)
             if status_filter:
@@ -182,7 +142,8 @@ class AttendanceView(APIView):
             return Response(serializer.data, status=status.HTTP_200_OK)
 
         except Exception as e:
-            print(f"Attendance GET error: {traceback.format_exc()}")
+            import traceback
+            print(traceback.format_exc())
             return Response({"error": f"Error fetching attendance: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def post(self, request):
@@ -204,6 +165,7 @@ class AttendanceView(APIView):
             if not data.get('date'):
                 data['date'] = datetime.now().date()
 
+            # Determine session based on Philippine Time if not provided
             if not data.get('session'):
                 now = datetime.now()
                 ph_time = now.astimezone(ZoneInfo('Asia/Manila'))
@@ -218,7 +180,6 @@ class AttendanceView(APIView):
         except TeacherProfile.DoesNotExist:
             return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            print(f"Attendance POST error: {traceback.format_exc()}")
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -229,7 +190,6 @@ class AttendanceDetailView(APIView):
         try:
             teacher_profile = TeacherProfile.objects.get(user=request.user)
             attendance = Attendance.objects.get(pk=pk, teacher=teacher_profile)
-            
             serializer = AttendanceSerializer(attendance, data=request.data, partial=True)
             if serializer.is_valid():
                 serializer.save()
@@ -237,10 +197,7 @@ class AttendanceDetailView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except Attendance.DoesNotExist:
             return Response({"error": "Attendance record not found"}, status=status.HTTP_404_NOT_FOUND)
-        except TeacherProfile.DoesNotExist:
-            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            print(f"Attendance PUT error: {traceback.format_exc()}")
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def delete(self, request, pk):
@@ -251,115 +208,112 @@ class AttendanceDetailView(APIView):
             return Response(status=status.HTTP_204_NO_CONTENT)
         except Attendance.DoesNotExist:
             return Response({"error": "Attendance record not found"}, status=status.HTTP_404_NOT_FOUND)
-        except TeacherProfile.DoesNotExist:
-            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            print(f"Attendance DELETE error: {traceback.format_exc()}")
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+# -----------------------------
+# ABSENCE VIEWS
+# -----------------------------
+class AbsenceView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        try:
+            teacher_profile = TeacherProfile.objects.get(user=request.user)
+            absences = Absence.objects.filter(teacher=teacher_profile).order_by('-date')
+            serializer = AbsenceSerializer(absences, many=True)
+            return Response(serializer.data)
+        except TeacherProfile.DoesNotExist:
+            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    def post(self, request):
+        try:
+            teacher_profile = TeacherProfile.objects.get(user=request.user)
+            serializer = AbsenceSerializer(data=request.data)
+            if serializer.is_valid():
+                serializer.save(teacher=teacher_profile)
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except TeacherProfile.DoesNotExist:
+            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
+
+class AbsenceDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def put(self, request, pk):
+        try:
+            teacher_profile = TeacherProfile.objects.get(user=request.user)
+            absence = Absence.objects.get(pk=pk, teacher=teacher_profile)
+            serializer = AbsenceSerializer(absence, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Absence.DoesNotExist:
+            return Response({"error": "Absence not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def delete(self, request, pk):
+        try:
+            teacher_profile = TeacherProfile.objects.get(user=request.user)
+            absence = Absence.objects.get(pk=pk, teacher=teacher_profile)
+            absence.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except Absence.DoesNotExist:
+            return Response({"error": "Absence not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # -----------------------------
-# BULK ATTENDANCE UPDATE
+# DROPOUT VIEWS
 # -----------------------------
-@api_view(['POST'])
-@permission_classes([permissions.IsAuthenticated])
-def bulk_update_attendance(request):
-    """
-    Bulk update attendance records.
-    
-    Expected payload:
-    {
-        "updates": [
-            {
-                "id": 1,
-                "status": "Absent"
-            },
-            {
-                "id": 2,
-                "status": "Dropped Out",
-                "reason": "Transferred to another school"
-            }
-        ]
-    }
-    """
-    try:
-        teacher_profile = TeacherProfile.objects.get(user=request.user)
-        updates = request.data.get('updates', [])
-        
-        if not updates:
-            return Response(
-                {"error": "No updates provided"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        results = {
-            'updated': [],
-            'errors': []
-        }
-        
-        for update_data in updates:
-            try:
-                attendance_id = update_data.get('id')
-                new_status = update_data.get('status')
-                
-                if not attendance_id or not new_status:
-                    results['errors'].append({
-                        'id': attendance_id,
-                        'error': 'Missing id or status'
-                    })
-                    continue
-                
-                attendance = Attendance.objects.get(pk=attendance_id, teacher=teacher_profile)
-                
-                if 'status' in update_data:
-                    attendance.status = new_status
-                if 'gender' in update_data:
-                    attendance.gender = update_data['gender']
-                if 'session' in update_data:
-                    attendance.session = update_data['session']
-                if 'date' in update_data:
-                    attendance.date = update_data['date']
-                if 'student_name' in update_data:
-                    attendance.student_name = update_data['student_name']
-                if 'student_lrn' in update_data:
-                    attendance.student_lrn = update_data['student_lrn']
-                if 'reason' in update_data:
-                    attendance.reason = update_data['reason']
-                
-                attendance.save()
-                results['updated'].append({
-                    'id': attendance_id,
-                    'student_name': attendance.student_name,
-                    'status': attendance.status
-                })
-                
-            except Attendance.DoesNotExist:
-                results['errors'].append({
-                    'id': attendance_id,
-                    'error': 'Attendance record not found'
-                })
-            except Exception as e:
-                results['errors'].append({
-                    'id': attendance_id,
-                    'error': str(e)
-                })
-        
-        return Response({
-            'message': 'Bulk update completed',
-            'results': results
-        }, status=status.HTTP_200_OK)
-        
-    except TeacherProfile.DoesNotExist:
-        return Response(
-            {"error": "Teacher profile not found"},
-            status=status.HTTP_404_NOT_FOUND
-        )
-    except Exception as e:
-        print(f"Bulk update error: {traceback.format_exc()}")
-        return Response(
-            {"error": f"Bulk update failed: {str(e)}"},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+class DropoutView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        try:
+            teacher_profile = TeacherProfile.objects.get(user=request.user)
+            dropouts = Dropout.objects.filter(teacher=teacher_profile).order_by('-date')
+            serializer = DropoutSerializer(dropouts, many=True)
+            return Response(serializer.data)
+        except TeacherProfile.DoesNotExist:
+            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    def post(self, request):
+        try:
+            teacher_profile = TeacherProfile.objects.get(user=request.user)
+            serializer = DropoutSerializer(data=request.data)
+            if serializer.is_valid():
+                serializer.save(teacher=teacher_profile)
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except TeacherProfile.DoesNotExist:
+            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
+
+class DropoutDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def put(self, request, pk):
+        try:
+            teacher_profile = TeacherProfile.objects.get(user=request.user)
+            dropout = Dropout.objects.get(pk=pk, teacher=teacher_profile)
+            serializer = DropoutSerializer(dropout, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Dropout.DoesNotExist:
+            return Response({"error": "Dropout not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    def delete(self, request, pk):
+        try:
+            teacher_profile = TeacherProfile.objects.get(user=request.user)
+            dropout = Dropout.objects.get(pk=pk, teacher=teacher_profile)
+            dropout.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except Dropout.DoesNotExist:
+            return Response({"error": "Dropout not found"}, status=status.HTTP_404_NOT_FOUND)
 
 # -----------------------------
 # UNAUTHORIZED PERSON VIEWS
@@ -375,9 +329,6 @@ class UnauthorizedPersonView(APIView):
             return Response(serializer.data)
         except TeacherProfile.DoesNotExist:
             return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            print(f"Unauthorized person GET error: {traceback.format_exc()}")
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def post(self, request):
         try:
@@ -389,9 +340,6 @@ class UnauthorizedPersonView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except TeacherProfile.DoesNotExist:
             return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            print(f"Unauthorized person POST error: {traceback.format_exc()}")
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class UnauthorizedPersonDetailView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -407,11 +355,6 @@ class UnauthorizedPersonDetailView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except UnauthorizedPerson.DoesNotExist:
             return Response({"error": "Person not found"}, status=status.HTTP_404_NOT_FOUND)
-        except TeacherProfile.DoesNotExist:
-            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            print(f"Unauthorized person PUT error: {traceback.format_exc()}")
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def delete(self, request, pk):
         try:
@@ -421,11 +364,6 @@ class UnauthorizedPersonDetailView(APIView):
             return Response(status=status.HTTP_204_NO_CONTENT)
         except UnauthorizedPerson.DoesNotExist:
             return Response({"error": "Person not found"}, status=status.HTTP_404_NOT_FOUND)
-        except TeacherProfile.DoesNotExist:
-            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            print(f"Unauthorized person DELETE error: {traceback.format_exc()}")
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # -----------------------------
 # PUBLIC ATTENDANCE LIST
@@ -436,9 +374,6 @@ class PublicAttendanceListView(generics.ListAPIView):
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
 
-# -----------------------------
-# SF2 EXCEL GENERATION
-# -----------------------------
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def generate_sf2_excel(request):
@@ -446,7 +381,6 @@ def generate_sf2_excel(request):
     Generate SF2 Excel report with attendance data for a specific month.
     Separates students by gender: Boys start at row 14, Girls start at row 36.
     ONLY WEEKDAYS (Monday-Friday) are included in the calendar.
-    Students with status "Dropped Out" are excluded from the report.
     
     NAME FORMAT:
     - Column B (Row 14+): FULL NAME (Last Name, First Name Middle Name)
@@ -463,8 +397,10 @@ def generate_sf2_excel(request):
     - year: Optional, integer (defaults to current year)
     """
     try:
+        # Get authenticated teacher profile
         teacher_profile = TeacherProfile.objects.get(user=request.user)
 
+        # Validate template file upload
         template_file = request.FILES.get('template_file')
         if not template_file:
             return Response(
@@ -472,110 +408,128 @@ def generate_sf2_excel(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Load the Excel workbook
         try:
             wb = load_workbook(template_file)
         except Exception as e:
-            print(f"Excel load error: {traceback.format_exc()}")
             return Response(
                 {"error": f"Failed to load Excel template: {str(e)}"},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Get and validate month/year parameters
         try:
             month = int(request.POST.get('month', datetime.now().month))
             year = int(request.POST.get('year', datetime.now().year))
-        except (ValueError, TypeError):
+        except ValueError:
             return Response(
                 {"error": "Invalid month or year parameter"},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Validate month range
         if month < 1 or month > 12:
             return Response(
                 {"error": "Month must be between 1 and 12"},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Month names
         month_names = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", 
                       "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
         
+        # Day names - EXACT ORDER: Mon, Tue, Wed, Thu, Fri only (weekdays)
         day_names_short = ["Mon", "Tue", "Wed", "Thu", "Fri"]
 
-        # Exclude students with "Dropped Out" status
+        # Fetch attendance records for the SPECIFIC MONTH only
         attendances = Attendance.objects.filter(
             teacher=teacher_profile,
             date__year=year,
             date__month=month
-        ).exclude(status='Dropped Out').order_by('date', 'timestamp')
+        ).order_by('date', 'timestamp')
 
         print(f"📊 Fetching attendance for: {month_names[month-1]} {year}")
-        print(f"📝 Found {attendances.count()} attendance records (excluding dropped out students)")
+        print(f"📝 Found {attendances.count()} attendance records")
 
+        # Build attendance data structure
         attendance_data = defaultdict(
             lambda: {'days': defaultdict(lambda: {'am': False, 'pm': False}), 'gender': None}
         )
         
-        students_dict = {}
+        # Set to collect all unique students with gender
+        students_dict = {}  # {name: gender}
 
+        # Process each attendance record
         for att in attendances:
             student_name = att.student_name
             day = att.date.day
             
+            # Store student gender if we don't have it yet
             if student_name not in students_dict:
-                students_dict[student_name] = att.gender if att.gender else 'Male'
+                students_dict[student_name] = att.gender if hasattr(att, 'gender') and att.gender else 'Male'
             
-            if att.session:
+            # Determine session with better fallback logic
+            if hasattr(att, 'session') and att.session:
                 session = att.session.upper()
             elif att.timestamp:
+                # Use Philippine timezone for consistent session determination
+                from zoneinfo import ZoneInfo
                 ph_time = att.timestamp.astimezone(ZoneInfo('Asia/Manila'))
                 session = 'AM' if ph_time.hour < 12 else 'PM'
             else:
-                session = 'AM'
+                session = 'AM'  # Default fallback
 
-            if att.status and att.status.lower() not in ['absent', 'dropped out']:
+            # Mark attendance only if status is NOT 'Absent'
+            if att.status and att.status.lower() != 'absent':
                 if session == 'AM':
                     attendance_data[student_name]['days'][day]['am'] = True
                 elif session == 'PM':
                     attendance_data[student_name]['days'][day]['pm'] = True
             
+            # Store gender
             attendance_data[student_name]['gender'] = students_dict[student_name]
 
+        # Separate students by gender and sort alphabetically
         boys = sorted([name for name, gender in students_dict.items() if gender and gender.lower() == 'male'])
         girls = sorted([name for name, gender in students_dict.items() if gender and gender.lower() == 'female'])
         
         print(f"👦 Boys: {len(boys)} students")
         print(f"👧 Girls: {len(girls)} students")
 
+        # Current date information
         now = datetime.now()
         current_day = now.day
         current_year = now.year
         current_month = now.month
 
-        # Define fills and fonts
+        # Define cell styling
         red_fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
         green_fill = PatternFill(start_color='00B050', end_color='00B050', fill_type='solid')
         
+        # Triangle font - LARGE size (48pt) with green color
         triangle_font = Font(color="00B050", size=48, bold=True)
         
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
         
-        # AM triangle: Justify horizontal makes it fill left side
+        # CORRECT TRIANGLE ALIGNMENTS
+        # AM (morning) = ◤ - Middle vertical + Justify horizontal (left-aligned effect)
         am_triangle_alignment = Alignment(
-            horizontal='justify',
-            vertical='center',
+            horizontal='justify',  # Justify pushes content to fill space
+            vertical='center',     # Middle vertical alignment
             wrap_text=False,
             shrink_to_fit=False
         )
         
-        # PM triangle: Left horizontal positions it on right side
+        # PM (afternoon) = ◢ - Middle vertical + Left horizontal
         pm_triangle_alignment = Alignment(
-            horizontal='left',
-            vertical='center',
+            horizontal='left',     # Left horizontal alignment
+            vertical='center',     # Middle vertical alignment
             wrap_text=False,
             shrink_to_fit=False
         )
 
+        # Use the first sheet from the template
         if len(wb.sheetnames) > 0:
             sheet_name = wb.sheetnames[0]
             ws = wb[sheet_name]
@@ -589,35 +543,34 @@ def generate_sf2_excel(request):
         month_name = month_names[month - 1]
         print(f"📅 Filling data for: {month_name} {year}")
         
-        # Row and column definitions
-        date_row = 11
-        day_row = 12
-        boys_start_row = 14
-        girls_start_row = 36
+        # Template Configuration
+        date_row = 11             # Row 11: Dates (1-31)
+        day_row = 12              # Row 12: Day names (Mon, Tue, Wed, etc.)
+        boys_start_row = 14       # Row 14: First BOYS data row
+        girls_start_row = 36      # Row 36: First GIRLS data row
         
-        name_column = 2  # Column B
-        first_day_column = 4  # Column D
+        name_column = 2           # Column B for FULL NAME
+        first_day_column = 4      # Column D where day 1 starts (Column D = 4)
 
+        # Helper function to unmerge and write to a cell
         def unmerge_and_write(ws, row, col, value, alignment=None):
-            """Unmerge cell if needed and write value"""
+            """FORCE unmerge cell if needed and write value."""
+            from openpyxl.cell.cell import MergedCell
+            
             cell_coord = ws.cell(row=row, column=col).coordinate
             
-            # Unmerge if cell is part of a merged range
             for merged_range in list(ws.merged_cells.ranges):
                 if cell_coord in merged_range:
                     ws.unmerge_cells(str(merged_range))
                     print(f"    🔓 Unmerged {merged_range}")
                     break
             
-            # Get cell (recreate if it was merged)
             cell = ws.cell(row=row, column=col)
             
-            # Handle MergedCell instances
             if isinstance(cell, MergedCell):
                 del ws._cells[(row, col)]
                 cell = ws.cell(row=row, column=col)
             
-            # Write value and alignment
             try:
                 cell.value = value
                 if alignment:
@@ -627,127 +580,141 @@ def generate_sf2_excel(request):
                 
             return cell
 
+        # Get number of days in the month
         days_in_month = monthrange(year, month)[1]
         print(f"📅 Days in {month_name} {year}: {days_in_month}")
 
-        day_columns = {}
+        # Build day-to-column mapping - ONLY WEEKDAYS (Mon-Fri)
+        day_columns = {}  # {day_number: column_index}
+        from datetime import date
         
         print("\n📅 Filling weekday calendar headers (only Mon-Fri)...")
-        current_col = first_day_column
+        current_col = first_day_column  # Start at column D
         
         for day in range(1, days_in_month + 1):
             current_date = date(year, month, day)
-            day_of_week = current_date.weekday()
+            day_of_week = current_date.weekday()  # 0=Monday, 6=Sunday
             
-            # Only include weekdays (Monday=0 to Friday=4)
-            if day_of_week < 5:
+            # ONLY process weekdays (Monday=0 to Friday=4)
+            if day_of_week < 5:  # Weekday check FIRST
                 day_columns[day] = current_col
                 
-                # Write day number
+                # Fill date in row 11
                 unmerge_and_write(ws, date_row, current_col, day, center_alignment)
                 
-                # Write day name
+                # Fill day name in row 12 (aligned with calendar)
+                # day_of_week is 0-4 for Mon-Fri, so it's safe to use as index
                 day_name = day_names_short[day_of_week]
                 unmerge_and_write(ws, day_row, current_col, day_name, center_alignment)
                 
                 print(f"    Day {day:2d} ({current_date.strftime('%Y-%m-%d')}): {day_name} at column {current_col}")
-                current_col += 1
+                current_col += 1  # Move to next column only for weekdays
             else:
+                # Weekend - just log and skip
                 day_name_full = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][day_of_week]
                 print(f"    Day {day:2d} ({current_date.strftime('%Y-%m-%d')}): {day_name_full} WEEKEND - SKIPPED")
         
         print(f"✓ Filled {len(day_columns)} weekday columns")
 
+        # Helper function to check if cell is merged
         def is_merged_cell(ws, row, col):
-            """Check if a cell is a merged cell"""
+            """Check if a cell is part of a merged range"""
+            from openpyxl.cell.cell import MergedCell
             cell = ws.cell(row=row, column=col)
             return isinstance(cell, MergedCell)
 
+        # Helper function to fill attendance for a list of students
         def fill_student_attendance(students_list, start_row):
-            """Fill attendance data for a list of students"""
             filled_count = 0
             for idx, name in enumerate(students_list):
                 row_num = start_row + idx
                 
                 print(f"  Processing student: {name} at row {row_num}")
                 
-                # Write student name
+                # Write FULL NAME to Column B
                 unmerge_and_write(ws, row_num, name_column, name, left_alignment)
 
-                # Fill attendance for each weekday
+                # Fill attendance ONLY for weekdays (skip weekends)
                 for day, col_idx in day_columns.items():
                     # Skip future dates
                     if year == current_year and month == current_month and day > current_day:
                         continue
 
                     try:
+                        # Skip merged cells
                         if is_merged_cell(ws, row_num, col_idx):
                             print(f"    ⏭️ Skipping merged cell at row {row_num}, col {col_idx}")
                             continue
                             
                         cell = ws.cell(row=row_num, column=col_idx)
                         
+                        # Get attendance status
                         has_am = attendance_data[name]['days'][day]['am']
                         has_pm = attendance_data[name]['days'][day]['pm']
 
-                        # Clear cell first
+                        # Clear existing content and reset formatting
                         cell.value = None
                         cell.fill = PatternFill(fill_type=None)
                         cell.font = Font()
                         cell.alignment = center_alignment
 
+                        # Apply attendance marking logic
+                        # ABSENT - neither AM nor PM present
                         if not has_am and not has_pm:
-                            # Absent - red fill
                             cell.fill = red_fill
                             cell.alignment = center_alignment
                             filled_count += 1
 
+                        # FULL DAY PRESENT - both AM and PM
                         elif has_am and has_pm:
-                            # Full day - green fill
                             cell.fill = green_fill
                             cell.alignment = center_alignment
                             filled_count += 1
 
+                        # HALF DAY PRESENT - TRIANGLES
+                        # AM only = ◤ (Middle + Justify)
                         elif has_am and not has_pm:
-                            # AM only - left triangle
                             cell.value = "◤"
                             cell.font = triangle_font
                             cell.alignment = am_triangle_alignment
                             filled_count += 1
-                            print(f"    ✓ AM triangle (◤) for day {day}")
+                            print(f"    ✓ AM triangle (◤) for day {day}: Middle+Justify")
                             
+                        # PM only = ◢ (Middle + Left)
                         elif has_pm and not has_am:
-                            # PM only - right triangle
                             cell.value = "◢"
                             cell.font = triangle_font
                             cell.alignment = pm_triangle_alignment
                             filled_count += 1
-                            print(f"    ✓ PM triangle (◢) for day {day}")
+                            print(f"    ✓ PM triangle (◢) for day {day}: Middle+Left")
                             
                     except Exception as e:
                         print(f"    ❌ Error filling day {day}: {e}")
-                        print(f"    {traceback.format_exc()}")
                         
             return filled_count
 
+        # Fill BOYS section (starting at row 14)
         print(f"\n👦 Filling boys section starting at row {boys_start_row}")
         boys_filled = fill_student_attendance(boys, boys_start_row)
         print(f"✓ Filled {boys_filled} cells for boys")
         
+        # Fill GIRLS section (starting at row 36)
         print(f"\n👧 Filling girls section starting at row {girls_start_row}")
         girls_filled = fill_student_attendance(girls, girls_start_row)
         print(f"✓ Filled {girls_filled} cells for girls")
 
-        # Save to buffer
+        # Save the workbook to a BytesIO buffer
         buffer = io.BytesIO()
         wb.save(buffer)
         buffer.seek(0)
         
+        # Generate filename with month name
         filename = f"SF2_{month_name}_{year}_{teacher_profile.section.replace(' ', '_')}.xlsx"
         
         print(f"\n✅ SF2 generated successfully: {filename}")
         print(f"📊 Total cells filled: {boys_filled + girls_filled}")
         
+        # Return file response
         return FileResponse(
             buffer,
             as_attachment=True,
@@ -757,12 +724,19 @@ def generate_sf2_excel(request):
 
     except TeacherProfile.DoesNotExist:
         return Response(
-            {"error": "Teacher profile not found"},
+            {"error": "Teacher profile not found."},
             status=status.HTTP_404_NOT_FOUND
         )
     except Exception as e:
-        print(f"SF2 generation error: {traceback.format_exc()}")
+        # Log the full error for debugging
+        import traceback
+        error_trace = traceback.format_exc()
+        print("=" * 80)
+        print("SF2 Generation Error:")
+        print(error_trace)
+        print("=" * 80)
+        
         return Response(
-            {"error": f"Failed to generate SF2: {str(e)}"},
+            {"error": f"Failed to generate SF2 Excel: {str(e)}"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
