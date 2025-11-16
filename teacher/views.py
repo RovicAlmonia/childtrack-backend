@@ -88,53 +88,70 @@ class RegisterView(generics.CreateAPIView):
 # -----------------------------
 # TEACHER LOGIN (Public)
 # -----------------------------
+# Replace the LoginView in your views.py with this corrected version:
+
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
 
     def post(self, request):
-        username = request.data.get("username") or request.data.get("name")
-        password = request.data.get("password")
-        grade = request.data.get("grade")
+        try:
+            username = request.data.get("username") or request.data.get("name")
+            password = request.data.get("password")
+            grade = request.data.get("grade")
 
-        if not username or not password:
-            return Response(
-                {"error": "Username and password are required"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            print(f"Login attempt - Username: {username}, Grade: {grade}")  # Debug log
 
-        user = authenticate(username=username, password=password)
-
-        if user:
-            try:
-                teacher_profile = TeacherProfile.objects.get(user=user)
-
-                if grade and grade.lower() not in teacher_profile.section.lower():
-                    return Response(
-                        {"error": "Grade does not match your assigned section"},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-
-                token, _ = Token.objects.get_or_create(user=user)
-                return Response({
-                    "token": token.key,
-                    "teacher": {
-                        "id": teacher_profile.id,
-                        "name": user.first_name or username,
-                        "username": username,
-                        "section": teacher_profile.section,
-                    }
-                }, status=status.HTTP_200_OK)
-            except TeacherProfile.DoesNotExist:
+            if not username or not password:
                 return Response(
-                    {"error": "Teacher profile not found"},
+                    {"error": "Username and password are required"},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-        return Response(
-            {"error": "Invalid credentials"},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+            user = authenticate(username=username, password=password)
+            print(f"Authentication result: {user}")  # Debug log
+
+            if user:
+                try:
+                    teacher_profile = TeacherProfile.objects.get(user=user)
+                    print(f"Teacher profile found: {teacher_profile.section}")  # Debug log
+
+                    if grade and grade.lower() not in teacher_profile.section.lower():
+                        return Response(
+                            {"error": "Grade does not match your assigned section"},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+
+                    token, _ = Token.objects.get_or_create(user=user)
+                    return Response({
+                        "token": token.key,
+                        "teacher": {
+                            "id": teacher_profile.id,
+                            "name": user.first_name or username,
+                            "username": username,
+                            "section": teacher_profile.section,
+                        }
+                    }, status=status.HTTP_200_OK)
+                    
+                except TeacherProfile.DoesNotExist:
+                    print(f"Teacher profile not found for user: {username}")  # Debug log
+                    return Response(
+                        {"error": "Teacher profile not found"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+            print(f"Invalid credentials for username: {username}")  # Debug log
+            return Response(
+                {"error": "Invalid credentials"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        except Exception as e:
+            print(f"Login error: {traceback.format_exc()}")  # Full error traceback
+            return Response(
+                {"error": f"Login failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 # -----------------------------
 # ATTENDANCE VIEWS
