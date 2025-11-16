@@ -72,7 +72,7 @@ class RegisterView(generics.CreateAPIView):
             return Response({"error": "Username already exists."}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             return Response({"error": f"Registration failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            )
+            
 
 # -----------------------------
 # TEACHER LOGIN (Public)
