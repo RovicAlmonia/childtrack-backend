@@ -4,8 +4,6 @@ from .views import (
     LoginView,
     AttendanceView,
     AttendanceDetailView,
-    AbsenceView,
-    AbsenceDetailView,
     DropoutView,
     DropoutDetailView,
     UnauthorizedPersonView,
@@ -23,9 +21,6 @@ urlpatterns = [
     path('attendance/<int:pk>/', AttendanceDetailView.as_view(), name='attendance-detail'),
     path('attendance/bulk-update/', bulk_update_attendance, name='bulk-update-attendance'),
     path('attendance/public/', PublicAttendanceListView.as_view(), name='public-attendance-list'),
-    
-    path('absence/', AbsenceView.as_view(), name='absence-list'),
-    path('absence/<int:pk>/', AbsenceDetailView.as_view(), name='absence-detail'),
     
     path('dropout/', DropoutView.as_view(), name='dropout-list'),
     path('dropout/<int:pk>/', DropoutDetailView.as_view(), name='dropout-detail'),
