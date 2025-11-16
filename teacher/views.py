@@ -85,6 +85,9 @@ class RegisterView(generics.CreateAPIView):
 # -----------------------------
 # TEACHER LOGIN (Public)
 # -----------------------------
+# -----------------------------
+# TEACHER LOGIN (Public)
+# -----------------------------
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
@@ -123,21 +126,6 @@ class LoginView(APIView):
                     }
                 }, status=status.HTTP_200_OK)
             except TeacherProfile.DoesNotExist:
-        return Response(
-            {"error": "Teacher profile not found."},
-            status=status.HTTP_404_NOT_FOUND
-        )
-    except Exception as e:
-        error_trace = traceback.format_exc()
-        print("=" * 80)
-        print("SF2 Generation Error:")
-        print(error_trace)
-        print("=" * 80)
-        
-        return Response(
-            {"error": f"Failed to generate SF2 Excel: {str(e)}"},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )ist:
                 return Response(
                     {"error": "Teacher profile not found"},
                     status=status.HTTP_400_BAD_REQUEST
