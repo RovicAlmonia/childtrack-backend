@@ -15,14 +15,14 @@ from .serializers import (
 )
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Alignment, Font
-from openpyxl.drawing.fill import GradientFillProperties, GradientStop
-from datetime import datetime
+from openpyxl.cell.cell import MergedCell
+from datetime import datetime, date
 from collections import defaultdict
 from calendar import monthrange
 from zoneinfo import ZoneInfo
 import io
 import json
-import re
+import traceback
 
 # -----------------------------
 # TEACHER REGISTRATION (Public)
@@ -79,6 +79,7 @@ class RegisterView(generics.CreateAPIView):
         except IntegrityError:
             return Response({"error": "Username already exists."}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
+            print(f"Registration error: {traceback.format_exc()}")
             return Response({"error": f"Registration failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # -----------------------------
@@ -122,6 +123,21 @@ class LoginView(APIView):
                     }
                 }, status=status.HTTP_200_OK)
             except TeacherProfile.DoesNotExist:
+        return Response(
+            {"error": "Teacher profile not found."},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        print("=" * 80)
+        print("SF2 Generation Error:")
+        print(error_trace)
+        print("=" * 80)
+        
+        return Response(
+            {"error": f"Failed to generate SF2 Excel: {str(e)}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )ist:
                 return Response(
                     {"error": "Teacher profile not found"},
                     status=status.HTTP_400_BAD_REQUEST
@@ -144,13 +160,13 @@ class AttendanceView(APIView):
             if not teacher_profile:
                 return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
 
-            date = request.query_params.get('date')
+            date_param = request.query_params.get('date')
             student = request.query_params.get('student')
             status_filter = request.query_params.get('status')
 
             queryset = Attendance.objects.filter(teacher=teacher_profile)
-            if date:
-                queryset = queryset.filter(date=date)
+            if date_param:
+                queryset = queryset.filter(date=date_param)
             if student:
                 queryset = queryset.filter(student_name__icontains=student)
             if status_filter:
@@ -161,8 +177,7 @@ class AttendanceView(APIView):
             return Response(serializer.data, status=status.HTTP_200_OK)
 
         except Exception as e:
-            import traceback
-            print(traceback.format_exc())
+            print(f"Attendance GET error: {traceback.format_exc()}")
             return Response({"error": f"Error fetching attendance: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def post(self, request):
@@ -198,6 +213,7 @@ class AttendanceView(APIView):
         except TeacherProfile.DoesNotExist:
             return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
+            print(f"Attendance POST error: {traceback.format_exc()}")
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -216,7 +232,10 @@ class AttendanceDetailView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except Attendance.DoesNotExist:
             return Response({"error": "Attendance record not found"}, status=status.HTTP_404_NOT_FOUND)
+        except TeacherProfile.DoesNotExist:
+            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
+            print(f"Attendance PUT error: {traceback.format_exc()}")
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def delete(self, request, pk):
@@ -227,7 +246,10 @@ class AttendanceDetailView(APIView):
             return Response(status=status.HTTP_204_NO_CONTENT)
         except Attendance.DoesNotExist:
             return Response({"error": "Attendance record not found"}, status=status.HTTP_404_NOT_FOUND)
+        except TeacherProfile.DoesNotExist:
+            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
+            print(f"Attendance DELETE error: {traceback.format_exc()}")
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -328,8 +350,7 @@ def bulk_update_attendance(request):
             status=status.HTTP_404_NOT_FOUND
         )
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
+        print(f"Bulk update error: {traceback.format_exc()}")
         return Response(
             {"error": f"Bulk update failed: {str(e)}"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -349,6 +370,9 @@ class UnauthorizedPersonView(APIView):
             return Response(serializer.data)
         except TeacherProfile.DoesNotExist:
             return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            print(f"Unauthorized person GET error: {traceback.format_exc()}")
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def post(self, request):
         try:
@@ -360,6 +384,9 @@ class UnauthorizedPersonView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except TeacherProfile.DoesNotExist:
             return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            print(f"Unauthorized person POST error: {traceback.format_exc()}")
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class UnauthorizedPersonDetailView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -375,6 +402,11 @@ class UnauthorizedPersonDetailView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except UnauthorizedPerson.DoesNotExist:
             return Response({"error": "Person not found"}, status=status.HTTP_404_NOT_FOUND)
+        except TeacherProfile.DoesNotExist:
+            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            print(f"Unauthorized person PUT error: {traceback.format_exc()}")
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def delete(self, request, pk):
         try:
@@ -384,6 +416,11 @@ class UnauthorizedPersonDetailView(APIView):
             return Response(status=status.HTTP_204_NO_CONTENT)
         except UnauthorizedPerson.DoesNotExist:
             return Response({"error": "Person not found"}, status=status.HTTP_404_NOT_FOUND)
+        except TeacherProfile.DoesNotExist:
+            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            print(f"Unauthorized person DELETE error: {traceback.format_exc()}")
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # -----------------------------
 # PUBLIC ATTENDANCE LIST
@@ -394,6 +431,9 @@ class PublicAttendanceListView(generics.ListAPIView):
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
 
+# -----------------------------
+# SF2 EXCEL GENERATION
+# -----------------------------
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def generate_sf2_excel(request):
@@ -430,6 +470,7 @@ def generate_sf2_excel(request):
         try:
             wb = load_workbook(template_file)
         except Exception as e:
+            print(f"Excel load error: {traceback.format_exc()}")
             return Response(
                 {"error": f"Failed to load Excel template: {str(e)}"},
                 status=status.HTTP_400_BAD_REQUEST
@@ -438,7 +479,7 @@ def generate_sf2_excel(request):
         try:
             month = int(request.POST.get('month', datetime.now().month))
             year = int(request.POST.get('year', datetime.now().year))
-        except ValueError:
+        except (ValueError, TypeError):
             return Response(
                 {"error": "Invalid month or year parameter"},
                 status=status.HTTP_400_BAD_REQUEST
@@ -476,12 +517,11 @@ def generate_sf2_excel(request):
             day = att.date.day
             
             if student_name not in students_dict:
-                students_dict[student_name] = att.gender if hasattr(att, 'gender') and att.gender else 'Male'
+                students_dict[student_name] = att.gender if att.gender else 'Male'
             
-            if hasattr(att, 'session') and att.session:
+            if att.session:
                 session = att.session.upper()
             elif att.timestamp:
-                from zoneinfo import ZoneInfo
                 ph_time = att.timestamp.astimezone(ZoneInfo('Asia/Manila'))
                 session = 'AM' if ph_time.hour < 12 else 'PM'
             else:
@@ -506,6 +546,7 @@ def generate_sf2_excel(request):
         current_year = now.year
         current_month = now.month
 
+        # Define fills and fonts
         red_fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
         green_fill = PatternFill(start_color='00B050', end_color='00B050', fill_type='solid')
         
@@ -514,6 +555,7 @@ def generate_sf2_excel(request):
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
         
+        # AM triangle: Justify horizontal makes it fill left side
         am_triangle_alignment = Alignment(
             horizontal='justify',
             vertical='center',
@@ -521,6 +563,7 @@ def generate_sf2_excel(request):
             shrink_to_fit=False
         )
         
+        # PM triangle: Left horizontal positions it on right side
         pm_triangle_alignment = Alignment(
             horizontal='left',
             vertical='center',
@@ -541,31 +584,35 @@ def generate_sf2_excel(request):
         month_name = month_names[month - 1]
         print(f"📅 Filling data for: {month_name} {year}")
         
+        # Row and column definitions
         date_row = 11
         day_row = 12
         boys_start_row = 14
         girls_start_row = 36
         
-        name_column = 2
-        first_day_column = 4
+        name_column = 2  # Column B
+        first_day_column = 4  # Column D
 
         def unmerge_and_write(ws, row, col, value, alignment=None):
-            from openpyxl.cell.cell import MergedCell
-            
+            """Unmerge cell if needed and write value"""
             cell_coord = ws.cell(row=row, column=col).coordinate
             
+            # Unmerge if cell is part of a merged range
             for merged_range in list(ws.merged_cells.ranges):
                 if cell_coord in merged_range:
                     ws.unmerge_cells(str(merged_range))
                     print(f"    🔓 Unmerged {merged_range}")
                     break
             
+            # Get cell (recreate if it was merged)
             cell = ws.cell(row=row, column=col)
             
+            # Handle MergedCell instances
             if isinstance(cell, MergedCell):
                 del ws._cells[(row, col)]
                 cell = ws.cell(row=row, column=col)
             
+            # Write value and alignment
             try:
                 cell.value = value
                 if alignment:
@@ -579,7 +626,6 @@ def generate_sf2_excel(request):
         print(f"📅 Days in {month_name} {year}: {days_in_month}")
 
         day_columns = {}
-        from datetime import date
         
         print("\n📅 Filling weekday calendar headers (only Mon-Fri)...")
         current_col = first_day_column
@@ -588,11 +634,14 @@ def generate_sf2_excel(request):
             current_date = date(year, month, day)
             day_of_week = current_date.weekday()
             
+            # Only include weekdays (Monday=0 to Friday=4)
             if day_of_week < 5:
                 day_columns[day] = current_col
                 
+                # Write day number
                 unmerge_and_write(ws, date_row, current_col, day, center_alignment)
                 
+                # Write day name
                 day_name = day_names_short[day_of_week]
                 unmerge_and_write(ws, day_row, current_col, day_name, center_alignment)
                 
@@ -605,20 +654,24 @@ def generate_sf2_excel(request):
         print(f"✓ Filled {len(day_columns)} weekday columns")
 
         def is_merged_cell(ws, row, col):
-            from openpyxl.cell.cell import MergedCell
+            """Check if a cell is a merged cell"""
             cell = ws.cell(row=row, column=col)
             return isinstance(cell, MergedCell)
 
         def fill_student_attendance(students_list, start_row):
+            """Fill attendance data for a list of students"""
             filled_count = 0
             for idx, name in enumerate(students_list):
                 row_num = start_row + idx
                 
                 print(f"  Processing student: {name} at row {row_num}")
                 
+                # Write student name
                 unmerge_and_write(ws, row_num, name_column, name, left_alignment)
 
+                # Fill attendance for each weekday
                 for day, col_idx in day_columns.items():
+                    # Skip future dates
                     if year == current_year and month == current_month and day > current_day:
                         continue
 
@@ -632,37 +685,43 @@ def generate_sf2_excel(request):
                         has_am = attendance_data[name]['days'][day]['am']
                         has_pm = attendance_data[name]['days'][day]['pm']
 
+                        # Clear cell first
                         cell.value = None
                         cell.fill = PatternFill(fill_type=None)
                         cell.font = Font()
                         cell.alignment = center_alignment
 
                         if not has_am and not has_pm:
+                            # Absent - red fill
                             cell.fill = red_fill
                             cell.alignment = center_alignment
                             filled_count += 1
 
                         elif has_am and has_pm:
+                            # Full day - green fill
                             cell.fill = green_fill
                             cell.alignment = center_alignment
                             filled_count += 1
 
                         elif has_am and not has_pm:
+                            # AM only - left triangle
                             cell.value = "◤"
                             cell.font = triangle_font
                             cell.alignment = am_triangle_alignment
                             filled_count += 1
-                            print(f"    ✓ AM triangle (◤) for day {day}: Middle+Justify")
+                            print(f"    ✓ AM triangle (◤) for day {day}")
                             
                         elif has_pm and not has_am:
+                            # PM only - right triangle
                             cell.value = "◢"
                             cell.font = triangle_font
                             cell.alignment = pm_triangle_alignment
                             filled_count += 1
-                            print(f"    ✓ PM triangle (◢) for day {day}: Middle+Left")
+                            print(f"    ✓ PM triangle (◢) for day {day}")
                             
                     except Exception as e:
                         print(f"    ❌ Error filling day {day}: {e}")
+                        print(f"    {traceback.format_exc()}")
                         
             return filled_count
 
@@ -674,6 +733,7 @@ def generate_sf2_excel(request):
         girls_filled = fill_student_attendance(girls, girls_start_row)
         print(f"✓ Filled {girls_filled} cells for girls")
 
+        # Save to buffer
         buffer = io.BytesIO()
         wb.save(buffer)
         buffer.seek(0)
@@ -690,20 +750,4 @@ def generate_sf2_excel(request):
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
 
-    except TeacherProfile.DoesNotExist:
-        return Response(
-            {"error": "Teacher profile not found."},
-            status=status.HTTP_404_NOT_FOUND
-        )
-    except Exception as e:
-        import traceback
-        error_trace = traceback.format_exc()
-        print("=" * 80)
-        print("SF2 Generation Error:")
-        print(error_trace)
-        print("=" * 80)
-        
-        return Response(
-            {"error": f"Failed to generate SF2 Excel: {str(e)}"},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+    except TeacherProfile.DoesNotEx
