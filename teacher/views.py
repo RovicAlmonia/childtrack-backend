@@ -264,6 +264,147 @@ class AttendanceDetailView(APIView):
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+# -----------------------------
+# BULK ATTENDANCE UPDATE
+# -----------------------------
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def bulk_update_attendance(request):
+    """
+    Bulk update attendance records.
+    Automatically moves students to Absences or Dropouts based on status.
+    
+    Expected payload:
+    {
+        "updates": [
+            {
+                "id": 1,
+                "status": "Absent",
+                "reason": "Sick"
+            },
+            {
+                "id": 2,
+                "status": "Dropped Out",
+                "reason": "Transferred to another school"
+            }
+        ]
+    }
+    """
+    try:
+        teacher_profile = TeacherProfile.objects.get(user=request.user)
+        updates = request.data.get('updates', [])
+        
+        if not updates:
+            return Response(
+                {"error": "No updates provided"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        results = {
+            'updated': [],
+            'moved_to_absence': [],
+            'moved_to_dropout': [],
+            'errors': []
+        }
+        
+        for update_data in updates:
+            try:
+                attendance_id = update_data.get('id')
+                new_status = update_data.get('status')
+                reason = update_data.get('reason', '')
+                
+                if not attendance_id or not new_status:
+                    results['errors'].append({
+                        'id': attendance_id,
+                        'error': 'Missing id or status'
+                    })
+                    continue
+                
+                attendance = Attendance.objects.get(pk=attendance_id, teacher=teacher_profile)
+                
+                # Handle Absent status
+                if new_status == 'Absent':
+                    Absence.objects.create(
+                        teacher=teacher_profile,
+                        student_name=attendance.student_name,
+                        date=attendance.date,
+                        reason=reason or 'Marked absent during attendance update'
+                    )
+                    attendance.delete()
+                    results['moved_to_absence'].append({
+                        'id': attendance_id,
+                        'student_name': attendance.student_name,
+                        'date': str(attendance.date)
+                    })
+                
+                # Handle Dropped Out status
+                elif new_status == 'Dropped Out':
+                    Dropout.objects.create(
+                        teacher=teacher_profile,
+                        student_name=attendance.student_name,
+                        date=attendance.date,
+                        reason=reason or 'Marked as dropped out during attendance update'
+                    )
+                    attendance.delete()
+                    results['moved_to_dropout'].append({
+                        'id': attendance_id,
+                        'student_name': attendance.student_name,
+                        'date': str(attendance.date)
+                    })
+                
+                # Handle other status updates
+                else:
+                    # Update only the fields that are provided
+                    if 'status' in update_data:
+                        attendance.status = new_status
+                    if 'gender' in update_data:
+                        attendance.gender = update_data['gender']
+                    if 'session' in update_data:
+                        attendance.session = update_data['session']
+                    if 'date' in update_data:
+                        attendance.date = update_data['date']
+                    if 'student_name' in update_data:
+                        attendance.student_name = update_data['student_name']
+                    if 'student_lrn' in update_data:
+                        attendance.student_lrn = update_data['student_lrn']
+                    
+                    attendance.save()
+                    results['updated'].append({
+                        'id': attendance_id,
+                        'student_name': attendance.student_name,
+                        'status': attendance.status
+                    })
+                
+            except Attendance.DoesNotExist:
+                results['errors'].append({
+                    'id': attendance_id,
+                    'error': 'Attendance record not found'
+                })
+            except Exception as e:
+                results['errors'].append({
+                    'id': attendance_id,
+                    'error': str(e)
+                })
+        
+        return Response({
+            'message': 'Bulk update completed',
+            'results': results
+        }, status=status.HTTP_200_OK)
+        
+    except TeacherProfile.DoesNotExist:
+        return Response(
+            {"error": "Teacher profile not found"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return Response(
+            {"error": f"Bulk update failed: {str(e)}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
 # -----------------------------
 # ABSENCE VIEWS
 # -----------------------------
