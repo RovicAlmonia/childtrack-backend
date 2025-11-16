@@ -6,11 +6,10 @@ from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.decorators import api_view, permission_classes
-from .models import TeacherProfile, Attendance, Dropout, UnauthorizedPerson
+from .models import TeacherProfile, Attendance, UnauthorizedPerson
 from .serializers import (
     TeacherProfileSerializer, 
     AttendanceSerializer,
-    DropoutSerializer,
     UnauthorizedPersonSerializer
 )
 from openpyxl import load_workbook
@@ -188,23 +187,6 @@ class AttendanceDetailView(APIView):
             teacher_profile = TeacherProfile.objects.get(user=request.user)
             attendance = Attendance.objects.get(pk=pk, teacher=teacher_profile)
             
-            new_status = request.data.get('status')
-            
-            if new_status == 'Dropped Out':
-                Dropout.objects.create(
-                    teacher=teacher_profile,
-                    student_name=attendance.student_name,
-                    student_lrn=attendance.student_lrn,
-                    gender=attendance.gender,
-                    date=attendance.date,
-                    reason=request.data.get('reason', 'Updated from attendance to dropout')
-                )
-                attendance.delete()
-                return Response({
-                    "message": "Student moved to dropouts",
-                    "student_name": attendance.student_name
-                }, status=status.HTTP_200_OK)
-            
             serializer = AttendanceSerializer(attendance, data=request.data, partial=True)
             if serializer.is_valid():
                 serializer.save()
@@ -235,7 +217,6 @@ class AttendanceDetailView(APIView):
 def bulk_update_attendance(request):
     """
     Bulk update attendance records.
-    Automatically moves students to Dropouts based on status.
     
     Expected payload:
     {
@@ -264,7 +245,6 @@ def bulk_update_attendance(request):
         
         results = {
             'updated': [],
-            'moved_to_dropout': [],
             'errors': []
         }
         
@@ -272,7 +252,6 @@ def bulk_update_attendance(request):
             try:
                 attendance_id = update_data.get('id')
                 new_status = update_data.get('status')
-                reason = update_data.get('reason', '')
                 
                 if not attendance_id or not new_status:
                     results['errors'].append({
@@ -283,41 +262,27 @@ def bulk_update_attendance(request):
                 
                 attendance = Attendance.objects.get(pk=attendance_id, teacher=teacher_profile)
                 
-                if new_status == 'Dropped Out':
-                    Dropout.objects.create(
-                        teacher=teacher_profile,
-                        student_name=attendance.student_name,
-                        student_lrn=attendance.student_lrn,
-                        gender=attendance.gender,
-                        date=attendance.date,
-                        reason=reason or 'Marked as dropped out during attendance update'
-                    )
-                    attendance.delete()
-                    results['moved_to_dropout'].append({
-                        'id': attendance_id,
-                        'student_name': attendance.student_name,
-                        'date': str(attendance.date)
-                    })
-                else:
-                    if 'status' in update_data:
-                        attendance.status = new_status
-                    if 'gender' in update_data:
-                        attendance.gender = update_data['gender']
-                    if 'session' in update_data:
-                        attendance.session = update_data['session']
-                    if 'date' in update_data:
-                        attendance.date = update_data['date']
-                    if 'student_name' in update_data:
-                        attendance.student_name = update_data['student_name']
-                    if 'student_lrn' in update_data:
-                        attendance.student_lrn = update_data['student_lrn']
-                    
-                    attendance.save()
-                    results['updated'].append({
-                        'id': attendance_id,
-                        'student_name': attendance.student_name,
-                        'status': attendance.status
-                    })
+                if 'status' in update_data:
+                    attendance.status = new_status
+                if 'gender' in update_data:
+                    attendance.gender = update_data['gender']
+                if 'session' in update_data:
+                    attendance.session = update_data['session']
+                if 'date' in update_data:
+                    attendance.date = update_data['date']
+                if 'student_name' in update_data:
+                    attendance.student_name = update_data['student_name']
+                if 'student_lrn' in update_data:
+                    attendance.student_lrn = update_data['student_lrn']
+                if 'reason' in update_data:
+                    attendance.reason = update_data['reason']
+                
+                attendance.save()
+                results['updated'].append({
+                    'id': attendance_id,
+                    'student_name': attendance.student_name,
+                    'status': attendance.status
+                })
                 
             except Attendance.DoesNotExist:
                 results['errors'].append({
@@ -347,56 +312,6 @@ def bulk_update_attendance(request):
             {"error": f"Bulk update failed: {str(e)}"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
-# -----------------------------
-# DROPOUT VIEWS
-# -----------------------------
-class DropoutView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request):
-        try:
-            teacher_profile = TeacherProfile.objects.get(user=request.user)
-            dropouts = Dropout.objects.filter(teacher=teacher_profile).order_by('-date')
-            serializer = DropoutSerializer(dropouts, many=True)
-            return Response(serializer.data)
-        except TeacherProfile.DoesNotExist:
-            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
-
-    def post(self, request):
-        try:
-            teacher_profile = TeacherProfile.objects.get(user=request.user)
-            serializer = DropoutSerializer(data=request.data)
-            if serializer.is_valid():
-                serializer.save(teacher=teacher_profile)
-                return Response(serializer.data, status=status.HTTP_201_CREATED)
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        except TeacherProfile.DoesNotExist:
-            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
-
-class DropoutDetailView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def put(self, request, pk):
-        try:
-            teacher_profile = TeacherProfile.objects.get(user=request.user)
-            dropout = Dropout.objects.get(pk=pk, teacher=teacher_profile)
-            serializer = DropoutSerializer(dropout, data=request.data, partial=True)
-            if serializer.is_valid():
-                serializer.save()
-                return Response(serializer.data)
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        except Dropout.DoesNotExist:
-            return Response({"error": "Dropout not found"}, status=status.HTTP_404_NOT_FOUND)
-
-    def delete(self, request, pk):
-        try:
-            teacher_profile = TeacherProfile.objects.get(user=request.user)
-            dropout = Dropout.objects.get(pk=pk, teacher=teacher_profile)
-            dropout.delete()
-            return Response(status=status.HTTP_204_NO_CONTENT)
-        except Dropout.DoesNotExist:
-            return Response({"error": "Dropout not found"}, status=status.HTTP_404_NOT_FOUND)
 
 # -----------------------------
 # UNAUTHORIZED PERSON VIEWS
@@ -464,6 +379,7 @@ def generate_sf2_excel(request):
     Generate SF2 Excel report with attendance data for a specific month.
     Separates students by gender: Boys start at row 14, Girls start at row 36.
     ONLY WEEKDAYS (Monday-Friday) are included in the calendar.
+    Students with status "Dropped Out" are excluded from the report.
     
     NAME FORMAT:
     - Column B (Row 14+): FULL NAME (Last Name, First Name Middle Name)
@@ -517,14 +433,15 @@ def generate_sf2_excel(request):
         
         day_names_short = ["Mon", "Tue", "Wed", "Thu", "Fri"]
 
+        # Exclude students with "Dropped Out" status
         attendances = Attendance.objects.filter(
             teacher=teacher_profile,
             date__year=year,
             date__month=month
-        ).order_by('date', 'timestamp')
+        ).exclude(status='Dropped Out').order_by('date', 'timestamp')
 
         print(f"📊 Fetching attendance for: {month_names[month-1]} {year}")
-        print(f"📝 Found {attendances.count()} attendance records")
+        print(f"📝 Found {attendances.count()} attendance records (excluding dropped out students)")
 
         attendance_data = defaultdict(
             lambda: {'days': defaultdict(lambda: {'am': False, 'pm': False}), 'gender': None}
@@ -548,7 +465,7 @@ def generate_sf2_excel(request):
             else:
                 session = 'AM'
 
-            if att.status and att.status.lower() != 'absent':
+            if att.status and att.status.lower() not in ['absent', 'dropped out']:
                 if session == 'AM':
                     attendance_data[student_name]['days'][day]['am'] = True
                 elif session == 'PM':
