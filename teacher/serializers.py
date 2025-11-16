@@ -29,7 +29,7 @@ class TeacherProfileSerializer(serializers.ModelSerializer):
         return teacher_profile
 
 class AttendanceSerializer(serializers.ModelSerializer):
-    teacher_name = serializers.CharField(source='teacher.user.first_name', read_only=True)
+    teacher_name = serializers.CharField(source='teacher.name', read_only=True)  # Changed from teacher.user.first_name
     lrn = serializers.CharField(source='student_lrn', required=False)
     qr_data = serializers.CharField(source='qr_code_data', required=False)
     
@@ -47,4 +47,5 @@ class UnauthorizedPersonSerializer(serializers.ModelSerializer):
         fields = ['id', 'teacher', 'teacher_name', 'name', 'address', 'age', 'student_name', 
                   'guardian_name', 'relation', 'contact', 'photo', 'timestamp']
         read_only_fields = ['timestamp', 'teacher']
+
 
