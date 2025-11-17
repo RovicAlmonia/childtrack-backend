@@ -197,4 +197,80 @@ class GuardianView(APIView):
             
         except Exception as e:
             return Response(
-                {"error": f"Error updating g
+                {"error": f"Error updating guardian: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def delete(self, request, pk=None):
+        """Delete a guardian"""
+        try:
+            # Get the teacher profile
+            try:
+                teacher_profile = TeacherProfile.objects.get(user=request.user)
+            except TeacherProfile.DoesNotExist:
+                return Response(
+                    {"error": "Teacher profile not found."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Get the guardian
+            guardian_id = pk or request.data.get('id')
+            if not guardian_id:
+                return Response(
+                    {"error": "Guardian ID is required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            try:
+                guardian = Guardian.objects.get(id=guardian_id, teacher=teacher_profile)
+            except Guardian.DoesNotExist:
+                return Response(
+                    {"error": "Guardian not found or you don't have permission to delete it"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            guardian.delete()
+            return Response(
+                {"message": "Guardian deleted successfully"},
+                status=status.HTTP_200_OK
+            )
+            
+        except Exception as e:
+            return Response(
+                {"error": f"Error deleting guardian: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class GuardianByTeacherView(APIView):
+    """Separate view to get guardians by teacher ID"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request, teacher_id):
+        """Get all guardians for a specific teacher by teacher ID"""
+        try:
+            # Get the teacher profile
+            try:
+                teacher_profile = TeacherProfile.objects.get(id=teacher_id)
+            except TeacherProfile.DoesNotExist:
+                return Response(
+                    {"error": f"Teacher profile with ID {teacher_id} not found."},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Get guardians for this teacher
+            guardians = Guardian.objects.filter(teacher=teacher_profile).order_by('-timestamp')
+            serializer = GuardianSerializer(guardians, many=True, context={'request': request})
+            
+            return Response({
+                "count": guardians.count(),
+                "teacher_id": teacher_profile.id,
+                "teacher_name": teacher_profile.user.get_full_name() or teacher_profile.user.username,
+                "results": serializer.data
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {"error": f"Error fetching guardians: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
