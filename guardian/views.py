@@ -1,4 +1,3 @@
-
 # ==========================================
 # views.py - Updated Guardian View
 # ==========================================
@@ -89,28 +88,6 @@ class GuardianView(APIView):
             
             # Validate and save
             serializer = GuardianSerializer(data=data, context={'request': request})
-            if serializer.is_valid():
-                guardian = serializer.save()
-                return Response(serializer.data, status=status.HTTP_201_CREATED)
-            
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            
-        except ValueError as e:
-            return Response(
-                {"error": f"Invalid data format: {str(e)}"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        except Exception as e:
-            return Response(
-                {"error": f"Error creating guardian: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-                'contact': required_fields['contact'],
-                'student_name': required_fields['student_name']
-            }
-            
-            # Validate and save
-            serializer = GuardianSerializer(data=data)
             if serializer.is_valid():
                 guardian = serializer.save()
                 return Response(serializer.data, status=status.HTTP_201_CREATED)
