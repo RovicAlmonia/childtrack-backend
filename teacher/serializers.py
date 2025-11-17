@@ -28,33 +28,16 @@ class TeacherProfileSerializer(serializers.ModelSerializer):
 
         teacher_profile = TeacherProfile.objects.create(user=user, **validated_data)
         return teacher_profile
+class AttendanceSerializer(serializers.ModelSerializer):
+    teacher_name = serializers.CharField(source='teacher.user.first_name', read_only=True)
+    lrn = serializers.CharField(source='student_lrn', required=False)
+    qr_data = serializers.CharField(source='qr_code_data', required=False)  # Alias for qr_code_data
 
-class AttendanceViewSet(viewsets.ModelViewSet):
-    queryset = Attendance.objects.all()
-    serializer_class = AttendanceSerializer
-    permission_classes = [IsAuthenticated]
-    
-    def get_queryset(self):
-        return Attendance.objects.filter(teacher__user=self.request.user)
-    
-    def perform_create(self, serializer):
-        teacher_profile = TeacherProfile.objects.get(user=self.request.user)
-        serializer.save(teacher=teacher_profile)
-    
-    def perform_update(self, serializer):
-        # Ensure teacher is set correctly on update
-        teacher_profile = TeacherProfile.objects.get(user=self.request.user)
-        serializer.save(teacher=teacher_profile)
-    
-    # Public endpoint for reading attendance (no auth required)
-    @action(detail=False, methods=['get'], permission_classes=[AllowAny], url_path='public')
-    def public_list(self, request):
-        queryset = Attendance.objects.all()
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
-
-
-
+    class Meta:
+        model = Attendance
+        fields = ['id', 'teacher', 'teacher_name', 'student_name', 'student_lrn', 'lrn', 'gender', 
+                  'date', 'status', 'session', 'qr_code_data', 'qr_data', 'timestamp']
+        read_only_fields = ['timestamp', 'teacher']
 class AbsenceSerializer(serializers.ModelSerializer):
     teacher_name = serializers.CharField(source='teacher.user.first_name', read_only=True)
 
