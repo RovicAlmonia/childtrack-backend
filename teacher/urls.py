@@ -1,40 +1,80 @@
+# teacher/urls.py
 from django.urls import path
 from .views import (
+    # Authentication
     RegisterView,
     LoginView,
+    
+    # Attendance
     AttendanceView,
-    AttendanceDetailView,
-    AbsenceView,
-    AbsenceDetailView,
-    DropoutView,
-    DropoutDetailView,
-    UnauthorizedPersonView,
-    UnauthorizedPersonDetailView,
+    attendance_detail,
     PublicAttendanceListView,
+    
+    # Absences
+    AbsenceView,
+    absence_detail,
+    
+    # Dropouts
+    DropoutView,
+    dropout_detail,
+    
+    # Unauthorized Persons
+    UnauthorizedPersonView,
+    unauthorized_person_detail,
+    
+    # Reports
     generate_sf2_excel,
 )
+
 urlpatterns = [
-    # Authentication
+    # ========================================
+    # AUTHENTICATION ENDPOINTS
+    # ========================================
     path('register/', RegisterView.as_view(), name='register'),
     path('login/', LoginView.as_view(), name='login'),
-
-    # Attendance
+    
+    # ========================================
+    # ATTENDANCE ENDPOINTS
+    # ========================================
+    # List and create attendance records (GET, POST)
     path('attendance/', AttendanceView.as_view(), name='attendance-list'),
-    path('attendance/<int:pk>/', AttendanceDetailView.as_view(), name='attendance-detail'),
-    path('attendance/public/', PublicAttendanceListView.as_view(), name='public-attendance-list'),
-
-    # Absence
-    path('absence/', AbsenceView.as_view(), name='absence-list'),
-    path('absence/<int:pk>/', AbsenceDetailView.as_view(), name='absence-detail'),
-
-    # Dropout
-    path('dropout/', DropoutView.as_view(), name='dropout-list'),
-    path('dropout/<int:pk>/', DropoutDetailView.as_view(), name='dropout-detail'),
-
-    # Unauthorized Person
+    
+    # Retrieve, update, or delete specific attendance record (GET, PUT, PATCH, DELETE)
+    path('attendance/<int:pk>/', attendance_detail, name='attendance-detail'),
+    
+    # Public attendance list - no authentication required (GET only)
+    path('attendance/public/', PublicAttendanceListView.as_view(), name='public-attendance'),
+    
+    # ========================================
+    # ABSENCE ENDPOINTS
+    # ========================================
+    # List and create absence records (GET, POST)
+    path('absences/', AbsenceView.as_view(), name='absence-list'),
+    
+    # Retrieve, update, or delete specific absence record (GET, PUT, PATCH, DELETE)
+    path('absences/<int:pk>/', absence_detail, name='absence-detail'),
+    
+    # ========================================
+    # DROPOUT ENDPOINTS
+    # ========================================
+    # List and create dropout records (GET, POST)
+    path('dropouts/', DropoutView.as_view(), name='dropout-list'),
+    
+    # Retrieve, update, or delete specific dropout record (GET, PUT, PATCH, DELETE)
+    path('dropouts/<int:pk>/', dropout_detail, name='dropout-detail'),
+    
+    # ========================================
+    # UNAUTHORIZED PERSON ENDPOINTS
+    # ========================================
+    # List and create unauthorized person records (GET, POST)
     path('unauthorized/', UnauthorizedPersonView.as_view(), name='unauthorized-list'),
-    path('unauthorized/<int:pk>/', UnauthorizedPersonDetailView.as_view(), name='unauthorized-detail'),
-
-    # SF2 Excel generation
-    path('sf2/generate/', generate_sf2_excel, name='generate-sf2-excel'),
+    
+    # Retrieve, update, or delete specific unauthorized person record (GET, PUT, PATCH, DELETE)
+    path('unauthorized/<int:pk>/', unauthorized_person_detail, name='unauthorized-detail'),
+    
+    # ========================================
+    # REPORT GENERATION ENDPOINTS
+    # ========================================
+    # Generate SF2 Excel report (POST only)
+    path('reports/sf2/', generate_sf2_excel, name='generate-sf2'),
 ]
