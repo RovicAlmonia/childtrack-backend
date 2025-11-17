@@ -1,18 +1,26 @@
 from django.contrib import admin
 from .models import Guardian
 
-@admin.register(Guardian)
+@admin.ModelAdmin
 class GuardianAdmin(admin.ModelAdmin):
     list_display = ['name', 'student_name', 'relationship', 'contact', 'teacher', 'timestamp']
-    search_fields = ['name', 'student_name', 'contact']
     list_filter = ['relationship', 'timestamp', 'teacher']
+    search_fields = ['name', 'student_name', 'contact']
     readonly_fields = ['timestamp']
     
     fieldsets = (
         ('Guardian Information', {
-            'fields': ('name', 'age', 'address', 'relationship', 'contact')
+            'fields': ('teacher', 'name', 'age', 'relationship', 'photo')
         }),
-        ('Student & Teacher', {
-            'fields': ('student_name', 'teacher', 'timestamp')
+        ('Student Information', {
+            'fields': ('student_name',)
+        }),
+        ('Contact Details', {
+            'fields': ('contact', 'address')
+        }),
+        ('Metadata', {
+            'fields': ('timestamp',)
         }),
     )
+
+admin.site.register(Guardian, GuardianAdmin)
