@@ -2,6 +2,7 @@
 from django.contrib.auth import authenticate
 from django.db import IntegrityError
 from django.http import FileResponse
+from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions, status
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
@@ -26,10 +27,11 @@ import io
 import json
 import re
 
-# -----------------------------
+# ========================================
 # TEACHER REGISTRATION (Public)
-# -----------------------------
+# ========================================
 class RegisterView(generics.CreateAPIView):
+    """Register a new teacher account"""
     queryset = TeacherProfile.objects.all()
     serializer_class = TeacherProfileSerializer
     permission_classes = [permissions.AllowAny]
@@ -62,10 +64,12 @@ class RegisterView(generics.CreateAPIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-# -----------------------------
+
+# ========================================
 # TEACHER LOGIN (Public)
-# -----------------------------
+# ========================================
 class LoginView(APIView):
+    """Authenticate teacher and return token"""
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
 
@@ -113,18 +117,25 @@ class LoginView(APIView):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-# -----------------------------
+
+# ========================================
 # ATTENDANCE VIEWS
-# -----------------------------
+# ========================================
 class AttendanceView(APIView):
+    """List and create attendance records"""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        """Get all attendance records with optional filters"""
         try:
             teacher_profile = TeacherProfile.objects.filter(user=request.user).first()
             if not teacher_profile:
-                return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
+                return Response(
+                    {"error": "Teacher profile not found"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
 
+            # Apply filters
             date = request.query_params.get('date')
             student = request.query_params.get('student')
             status_filter = request.query_params.get('status')
@@ -144,15 +155,20 @@ class AttendanceView(APIView):
         except Exception as e:
             import traceback
             print(traceback.format_exc())
-            return Response({"error": f"Error fetching attendance: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(
+                {"error": f"Error fetching attendance: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     def post(self, request):
+        """Create a new attendance record"""
         try:
             teacher_profile = TeacherProfile.objects.get(user=request.user)
 
             data = request.data.copy()
             qr_data = data.get('qr_data', '')
 
+            # Parse QR code data if provided
             if qr_data:
                 try:
                     qr_json = json.loads(qr_data)
@@ -162,6 +178,7 @@ class AttendanceView(APIView):
                 except json.JSONDecodeError:
                     pass
 
+            # Set default date if not provided
             if not data.get('date'):
                 data['date'] = datetime.now().date()
 
@@ -178,55 +195,91 @@ class AttendanceView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         except TeacherProfile.DoesNotExist:
-            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"error": "Teacher profile not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
-class AttendanceDetailView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def put(self, request, pk):
-        try:
-            teacher_profile = TeacherProfile.objects.get(user=request.user)
-            attendance = Attendance.objects.get(pk=pk, teacher=teacher_profile)
-            serializer = AttendanceSerializer(attendance, data=request.data, partial=True)
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def attendance_detail(request, pk):
+    """Retrieve, update, or delete a specific attendance record"""
+    try:
+        teacher_profile = TeacherProfile.objects.get(user=request.user)
+        attendance = get_object_or_404(Attendance, pk=pk)
+        
+        if request.method == 'GET':
+            serializer = AttendanceSerializer(attendance)
+            return Response(serializer.data)
+        
+        elif request.method in ['PUT', 'PATCH']:
+            partial = request.method == 'PATCH'
+            serializer = AttendanceSerializer(
+                attendance, 
+                data=request.data, 
+                partial=partial
+            )
+            
             if serializer.is_valid():
-                serializer.save()
+                serializer.save(teacher=teacher_profile)
                 return Response(serializer.data)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        except Attendance.DoesNotExist:
-            return Response({"error": "Attendance record not found"}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    def delete(self, request, pk):
-        try:
-            teacher_profile = TeacherProfile.objects.get(user=request.user)
-            attendance = Attendance.objects.get(pk=pk, teacher=teacher_profile)
+        
+        elif request.method == 'DELETE':
             attendance.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
-        except Attendance.DoesNotExist:
-            return Response({"error": "Attendance record not found"}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    except TeacherProfile.DoesNotExist:
+        return Response(
+            {"error": "Teacher profile not found"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Attendance.DoesNotExist:
+        return Response(
+            {"error": "Attendance record not found"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
 
-# -----------------------------
+
+# ========================================
+# PUBLIC ATTENDANCE LIST
+# ========================================
+class PublicAttendanceListView(generics.ListAPIView):
+    """Public endpoint to view all attendance records (no authentication required)"""
+    queryset = Attendance.objects.all().order_by('-timestamp')
+    serializer_class = AttendanceSerializer
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+
+
+# ========================================
 # ABSENCE VIEWS
-# -----------------------------
+# ========================================
 class AbsenceView(APIView):
+    """List and create absence records"""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        """Get all absence records for the authenticated teacher"""
         try:
             teacher_profile = TeacherProfile.objects.get(user=request.user)
             absences = Absence.objects.filter(teacher=teacher_profile).order_by('-date')
             serializer = AbsenceSerializer(absences, many=True)
             return Response(serializer.data)
         except TeacherProfile.DoesNotExist:
-            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"error": "Teacher profile not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
 
     def post(self, request):
+        """Create a new absence record"""
         try:
             teacher_profile = TeacherProfile.objects.get(user=request.user)
             serializer = AbsenceSerializer(data=request.data)
@@ -235,52 +288,75 @@ class AbsenceView(APIView):
                 return Response(serializer.data, status=status.HTTP_201_CREATED)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except TeacherProfile.DoesNotExist:
-            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"error": "Teacher profile not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
 
-class AbsenceDetailView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
 
-    def put(self, request, pk):
-        try:
-            teacher_profile = TeacherProfile.objects.get(user=request.user)
-            absence = Absence.objects.get(pk=pk, teacher=teacher_profile)
-            serializer = AbsenceSerializer(absence, data=request.data, partial=True)
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def absence_detail(request, pk):
+    """Retrieve, update, or delete a specific absence record"""
+    try:
+        teacher_profile = TeacherProfile.objects.get(user=request.user)
+        absence = get_object_or_404(Absence, pk=pk, teacher=teacher_profile)
+        
+        if request.method == 'GET':
+            serializer = AbsenceSerializer(absence)
+            return Response(serializer.data)
+        
+        elif request.method in ['PUT', 'PATCH']:
+            partial = request.method == 'PATCH'
+            serializer = AbsenceSerializer(
+                absence, 
+                data=request.data, 
+                partial=partial
+            )
+            
             if serializer.is_valid():
                 serializer.save()
                 return Response(serializer.data)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        except Absence.DoesNotExist:
-            return Response({"error": "Absence not found"}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    def delete(self, request, pk):
-        try:
-            teacher_profile = TeacherProfile.objects.get(user=request.user)
-            absence = Absence.objects.get(pk=pk, teacher=teacher_profile)
+        
+        elif request.method == 'DELETE':
             absence.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
-        except Absence.DoesNotExist:
-            return Response({"error": "Absence not found"}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    except TeacherProfile.DoesNotExist:
+        return Response(
+            {"error": "Teacher profile not found"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Absence.DoesNotExist:
+        return Response(
+            {"error": "Absence not found"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
 
-# -----------------------------
+
+# ========================================
 # DROPOUT VIEWS
-# -----------------------------
+# ========================================
 class DropoutView(APIView):
+    """List and create dropout records"""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        """Get all dropout records for the authenticated teacher"""
         try:
             teacher_profile = TeacherProfile.objects.get(user=request.user)
             dropouts = Dropout.objects.filter(teacher=teacher_profile).order_by('-date')
             serializer = DropoutSerializer(dropouts, many=True)
             return Response(serializer.data)
         except TeacherProfile.DoesNotExist:
-            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"error": "Teacher profile not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
 
     def post(self, request):
+        """Create a new dropout record"""
         try:
             teacher_profile = TeacherProfile.objects.get(user=request.user)
             serializer = DropoutSerializer(data=request.data)
@@ -289,48 +365,77 @@ class DropoutView(APIView):
                 return Response(serializer.data, status=status.HTTP_201_CREATED)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except TeacherProfile.DoesNotExist:
-            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"error": "Teacher profile not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
 
-class DropoutDetailView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
 
-    def put(self, request, pk):
-        try:
-            teacher_profile = TeacherProfile.objects.get(user=request.user)
-            dropout = Dropout.objects.get(pk=pk, teacher=teacher_profile)
-            serializer = DropoutSerializer(dropout, data=request.data, partial=True)
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def dropout_detail(request, pk):
+    """Retrieve, update, or delete a specific dropout record"""
+    try:
+        teacher_profile = TeacherProfile.objects.get(user=request.user)
+        dropout = get_object_or_404(Dropout, pk=pk, teacher=teacher_profile)
+        
+        if request.method == 'GET':
+            serializer = DropoutSerializer(dropout)
+            return Response(serializer.data)
+        
+        elif request.method in ['PUT', 'PATCH']:
+            partial = request.method == 'PATCH'
+            serializer = DropoutSerializer(
+                dropout, 
+                data=request.data, 
+                partial=partial
+            )
+            
             if serializer.is_valid():
                 serializer.save()
                 return Response(serializer.data)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        except Dropout.DoesNotExist:
-            return Response({"error": "Dropout not found"}, status=status.HTTP_404_NOT_FOUND)
-
-    def delete(self, request, pk):
-        try:
-            teacher_profile = TeacherProfile.objects.get(user=request.user)
-            dropout = Dropout.objects.get(pk=pk, teacher=teacher_profile)
+        
+        elif request.method == 'DELETE':
             dropout.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
-        except Dropout.DoesNotExist:
-            return Response({"error": "Dropout not found"}, status=status.HTTP_404_NOT_FOUND)
+    
+    except TeacherProfile.DoesNotExist:
+        return Response(
+            {"error": "Teacher profile not found"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Dropout.DoesNotExist:
+        return Response(
+            {"error": "Dropout not found"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
 
-# -----------------------------
+
+# ========================================
 # UNAUTHORIZED PERSON VIEWS
-# -----------------------------
+# ========================================
 class UnauthorizedPersonView(APIView):
+    """List and create unauthorized person records"""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        """Get all unauthorized person records for the authenticated teacher"""
         try:
             teacher_profile = TeacherProfile.objects.get(user=request.user)
-            persons = UnauthorizedPerson.objects.filter(teacher=teacher_profile).order_by('-timestamp')
+            persons = UnauthorizedPerson.objects.filter(
+                teacher=teacher_profile
+            ).order_by('-timestamp')
             serializer = UnauthorizedPersonSerializer(persons, many=True)
             return Response(serializer.data)
         except TeacherProfile.DoesNotExist:
-            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"error": "Teacher profile not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
 
     def post(self, request):
+        """Create a new unauthorized person record"""
         try:
             teacher_profile = TeacherProfile.objects.get(user=request.user)
             serializer = UnauthorizedPersonSerializer(data=request.data)
@@ -339,41 +444,60 @@ class UnauthorizedPersonView(APIView):
                 return Response(serializer.data, status=status.HTTP_201_CREATED)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except TeacherProfile.DoesNotExist:
-            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"error": "Teacher profile not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
 
-class UnauthorizedPersonDetailView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
 
-    def put(self, request, pk):
-        try:
-            teacher_profile = TeacherProfile.objects.get(user=request.user)
-            person = UnauthorizedPerson.objects.get(pk=pk, teacher=teacher_profile)
-            serializer = UnauthorizedPersonSerializer(person, data=request.data, partial=True)
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def unauthorized_person_detail(request, pk):
+    """Retrieve, update, or delete a specific unauthorized person record"""
+    try:
+        teacher_profile = TeacherProfile.objects.get(user=request.user)
+        person = get_object_or_404(
+            UnauthorizedPerson, 
+            pk=pk, 
+            teacher=teacher_profile
+        )
+        
+        if request.method == 'GET':
+            serializer = UnauthorizedPersonSerializer(person)
+            return Response(serializer.data)
+        
+        elif request.method in ['PUT', 'PATCH']:
+            partial = request.method == 'PATCH'
+            serializer = UnauthorizedPersonSerializer(
+                person, 
+                data=request.data, 
+                partial=partial
+            )
+            
             if serializer.is_valid():
                 serializer.save()
                 return Response(serializer.data)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        except UnauthorizedPerson.DoesNotExist:
-            return Response({"error": "Person not found"}, status=status.HTTP_404_NOT_FOUND)
-
-    def delete(self, request, pk):
-        try:
-            teacher_profile = TeacherProfile.objects.get(user=request.user)
-            person = UnauthorizedPerson.objects.get(pk=pk, teacher=teacher_profile)
+        
+        elif request.method == 'DELETE':
             person.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
-        except UnauthorizedPerson.DoesNotExist:
-            return Response({"error": "Person not found"}, status=status.HTTP_404_NOT_FOUND)
+    
+    except TeacherProfile.DoesNotExist:
+        return Response(
+            {"error": "Teacher profile not found"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except UnauthorizedPerson.DoesNotExist:
+        return Response(
+            {"error": "Person not found"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
 
-# -----------------------------
-# PUBLIC ATTENDANCE LIST
-# -----------------------------
-class PublicAttendanceListView(generics.ListAPIView):
-    queryset = Attendance.objects.all().order_by('-timestamp')
-    serializer_class = AttendanceSerializer
-    permission_classes = [permissions.AllowAny]
-    authentication_classes = []
 
+# ========================================
+# SF2 EXCEL REPORT GENERATION
+# ========================================
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def generate_sf2_excel(request):
@@ -473,7 +597,6 @@ def generate_sf2_excel(request):
                 session = att.session.upper()
             elif att.timestamp:
                 # Use Philippine timezone for consistent session determination
-                from zoneinfo import ZoneInfo
                 ph_time = att.timestamp.astimezone(ZoneInfo('Asia/Manila'))
                 session = 'AM' if ph_time.hour < 12 else 'PM'
             else:
@@ -603,7 +726,6 @@ def generate_sf2_excel(request):
                 unmerge_and_write(ws, date_row, current_col, day, center_alignment)
                 
                 # Fill day name in row 12 (aligned with calendar)
-                # day_of_week is 0-4 for Mon-Fri, so it's safe to use as index
                 day_name = day_names_short[day_of_week]
                 unmerge_and_write(ws, day_row, current_col, day_name, center_alignment)
                 
