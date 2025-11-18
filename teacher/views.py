@@ -161,49 +161,65 @@ class AttendanceView(APIView):
             )
 
     def post(self, request):
-        """Create a new attendance record"""
-        try:
-            teacher_profile = TeacherProfile.objects.get(user=request.user)
+    """Create a new attendance record"""
+    try:
+        teacher_profile = TeacherProfile.objects.get(user=request.user)
 
-            data = request.data.copy()
-            qr_data = data.get('qr_data', '')
+        data = request.data.copy()
+        qr_data = data.get('qr_data', '')
 
-            # Parse QR code data if provided
-            if qr_data:
-                try:
-                    qr_json = json.loads(qr_data)
-                    data['student_lrn'] = qr_json.get('lrn', '')
-                    if not data.get('student_name'):
-                        data['student_name'] = qr_json.get('student', 'Unknown')
-                except json.JSONDecodeError:
-                    pass
+        # Parse QR code data if provided
+        if qr_data:
+            try:
+                qr_json = json.loads(qr_data)
+                data['student_lrn'] = qr_json.get('lrn', '')
+                if not data.get('student_name'):
+                    data['student_name'] = qr_json.get('student', 'Unknown')
+                
+                # ✅ EXTRACT GENDER FROM QR CODE
+                qr_gender = qr_json.get('gender', '').strip().upper()
+                if qr_gender:
+                    # Convert F/M to Female/Male
+                    if qr_gender == 'F' or qr_gender == 'FEMALE':
+                        data['gender'] = 'Female'
+                    elif qr_gender == 'M' or qr_gender == 'MALE':
+                        data['gender'] = 'Male'
+                
+                # ✅ EXTRACT GUARDIAN NAME FROM QR CODE
+                guardian_name = qr_json.get('name', '').strip()
+                guardian_role = qr_json.get('role', '').strip()
+                if guardian_name:
+                    data['guardian_name'] = guardian_name
+                    
+            except json.JSONDecodeError:
+                pass
 
-            # Set default date if not provided
-            if not data.get('date'):
-                data['date'] = datetime.now().date()
+        # Set default date if not provided
+        if not data.get('date'):
+            data['date'] = datetime.now().date()
 
-            # Determine session based on Philippine Time if not provided
-            if not data.get('session'):
-                now = datetime.now()
-                ph_time = now.astimezone(ZoneInfo('Asia/Manila'))
-                data['session'] = 'AM' if ph_time.hour < 12 else 'PM'
+        # Determine session based on Philippine Time if not provided
+        if not data.get('session'):
+            now = datetime.now()
+            ph_time = now.astimezone(ZoneInfo('Asia/Manila'))
+            data['session'] = 'AM' if ph_time.hour < 12 else 'PM'
 
-            serializer = AttendanceSerializer(data=data)
-            if serializer.is_valid():
-                serializer.save(teacher=teacher_profile)
-                return Response(serializer.data, status=status.HTTP_201_CREATED)
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer = AttendanceSerializer(data=data)
+        if serializer.is_valid():
+            serializer.save(teacher=teacher_profile)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        except TeacherProfile.DoesNotExist:
-            return Response(
-                {"error": "Teacher profile not found"}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
-        except Exception as e:
-            return Response(
-                {"error": str(e)}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+    except TeacherProfile.DoesNotExist:
+        return Response(
+            {"error": "Teacher profile not found"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        return Response(
+            {"error": str(e)}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 @api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
