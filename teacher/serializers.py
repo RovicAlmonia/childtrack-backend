@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import TeacherProfile, Guardian, Attendance, Absence, Dropout, UnauthorizedPerson
+from .models import TeacherProfile, Attendance, Absence, Dropout, UnauthorizedPerson
 
 
 class TeacherProfileSerializer(serializers.ModelSerializer):
@@ -31,43 +31,16 @@ class TeacherProfileSerializer(serializers.ModelSerializer):
         return teacher_profile
 
 
-class GuardianSerializer(serializers.ModelSerializer):
-    teacher_name = serializers.CharField(source='teacher.user.first_name', read_only=True)
-    lrn = serializers.CharField(source='student_lrn', required=False)  # Alias
-
-    class Meta:
-        model = Guardian
-        fields = [
-            'id', 
-            'teacher', 
-            'teacher_name', 
-            'student_name', 
-            'student_lrn', 
-            'lrn',
-            'guardian_name', 
-            'relation', 
-            'contact', 
-            'email',
-            'address', 
-            'occupation', 
-            'emergency_contact',
-            'photo', 
-            'is_primary',
-            'timestamp',
-            'updated_at'
-        ]
-        read_only_fields = ['timestamp', 'updated_at', 'teacher']
-
-
 class AttendanceSerializer(serializers.ModelSerializer):
     teacher_name = serializers.CharField(source='teacher.user.first_name', read_only=True)
     lrn = serializers.CharField(source='student_lrn', required=False)
     qr_data = serializers.CharField(source='qr_code_data', required=False)  # Alias for qr_code_data
+    parent = serializers.CharField(source='guardian_name', required=False)  # Alias for guardian_name
 
     class Meta:
         model = Attendance
         fields = ['id', 'teacher', 'teacher_name', 'student_name', 'student_lrn', 'lrn', 'gender', 
-                  'date', 'status', 'session', 'qr_code_data', 'qr_data', 'timestamp']
+                  'guardian_name', 'parent', 'date', 'status', 'session', 'qr_code_data', 'qr_data', 'timestamp']
         read_only_fields = ['timestamp', 'teacher']
 
 
