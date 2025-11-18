@@ -7,6 +7,9 @@ from .views import (
     ParentGuardianListView,
     StudentDetailView,
     AllTeachersStudentsView,
+    ParentMobileRegistrationView,
+    ParentMobileLoginView,
+    ParentsByLRNView,
 )
 
 urlpatterns = [
@@ -17,4 +20,9 @@ urlpatterns = [
     path('parents/', ParentGuardianListView.as_view(), name='parents-list'),
     path('students/<str:lrn>/', StudentDetailView.as_view(), name='student-detail'),
     path('all-teachers-students/', AllTeachersStudentsView.as_view(), name='all-teachers-students'),
+    
+    # Mobile app endpoints
+    path('mobile/register/', ParentMobileRegistrationView.as_view(), name='mobile-register'),
+    path('mobile/login/', ParentMobileLoginView.as_view(), name='mobile-login'),
+    path('by-lrn/<str:lrn>/', ParentsByLRNView.as_view(), name='parents-by-lrn'),
 ]
