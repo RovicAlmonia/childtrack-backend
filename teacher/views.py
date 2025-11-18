@@ -134,6 +134,7 @@ class AttendanceView(APIView):
             date = request.query_params.get('date')
             student = request.query_params.get('student')
             status_filter = request.query_params.get('status')
+            transaction_type = request.query_params.get('transaction_type')
 
             queryset = Attendance.objects.filter(teacher=teacher_profile)
 
@@ -143,6 +144,8 @@ class AttendanceView(APIView):
                 queryset = queryset.filter(student_name__icontains=student)
             if status_filter:
                 queryset = queryset.filter(status=status_filter)
+            if transaction_type:
+                queryset = queryset.filter(transaction_type=transaction_type)
 
             attendances = queryset.order_by('-date', '-timestamp')
             serializer = AttendanceSerializer(attendances, many=True)
@@ -199,6 +202,15 @@ class AttendanceView(APIView):
                 ph_time = now.astimezone(ZoneInfo('Asia/Manila'))
                 data['session'] = 'AM' if ph_time.hour < 12 else 'PM'
 
+            # ✅ NEW: Determine transaction type based on status
+            status_value = data.get('status', 'Present')
+            if status_value == 'Drop-off':
+                data['transaction_type'] = 'drop-off'
+            elif status_value == 'Pick-up':
+                data['transaction_type'] = 'pick-up'
+            else:
+                data['transaction_type'] = 'attendance'
+
             serializer = AttendanceSerializer(data=data)
             if serializer.is_valid():
                 serializer.save(teacher=teacher_profile)
@@ -230,9 +242,21 @@ def attendance_detail(request, pk):
 
         elif request.method in ['PUT', 'PATCH']:
             partial = request.method == 'PATCH'
+            
+            # ✅ NEW: Update transaction_type if status is being changed
+            data = request.data.copy()
+            if 'status' in data:
+                status_value = data['status']
+                if status_value == 'Drop-off':
+                    data['transaction_type'] = 'drop-off'
+                elif status_value == 'Pick-up':
+                    data['transaction_type'] = 'pick-up'
+                else:
+                    data['transaction_type'] = 'attendance'
+            
             serializer = AttendanceSerializer(
                 attendance,
-                data=request.data,
+                data=data,
                 partial=partial
             )
             if serializer.is_valid():
