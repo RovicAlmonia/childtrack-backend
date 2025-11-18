@@ -1,6 +1,6 @@
 from django.db import models
+from django.contrib.auth.models import User
 from teacher.models import TeacherProfile
-
 
 class Student(models.Model):
     GENDER_CHOICES = [
@@ -64,3 +64,24 @@ class ParentGuardian(models.Model):
         ordering = ['teacher', 'student', 'role']
         verbose_name = "Parent/Guardian"
         verbose_name_plural = "Parents/Guardians"
+
+
+class ParentMobileAccount(models.Model):
+    """Mobile app account for parents/guardians"""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='parent_mobile_account')
+    parent_guardian = models.OneToOneField(
+        ParentGuardian, 
+        on_delete=models.CASCADE, 
+        related_name='mobile_account'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_active = models.BooleanField(default=True)
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.parent_guardian.name}"
+    
+    class Meta:
+        verbose_name = "Parent Mobile Account"
+        verbose_name_plural = "Parent Mobile Accounts"
+        
