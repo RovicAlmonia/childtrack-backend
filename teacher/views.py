@@ -1,4 +1,3 @@
-# views.py
 from django.contrib.auth import authenticate
 from django.db import IntegrityError
 from django.http import FileResponse
@@ -8,9 +7,10 @@ from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.decorators import api_view, permission_classes
-from .models import TeacherProfile, Attendance, Absence, Dropout, UnauthorizedPerson
+from .models import TeacherProfile, Guardian, Attendance, Absence, Dropout, UnauthorizedPerson
 from .serializers import (
-    TeacherProfileSerializer, 
+    TeacherProfileSerializer,
+    GuardianSerializer,
     AttendanceSerializer,
     AbsenceSerializer,
     DropoutSerializer,
@@ -115,6 +115,110 @@ class LoginView(APIView):
         return Response(
             {"error": "Invalid credentials"},
             status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+# ========================================
+# GUARDIAN/PARENT VIEWS
+# ========================================
+class GuardianView(APIView):
+    """List and create guardian/parent records"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """Get all guardian records with optional filters"""
+        try:
+            teacher_profile = TeacherProfile.objects.get(user=request.user)
+            
+            # Apply filters
+            student = request.query_params.get('student')
+            relation = request.query_params.get('relation')
+            is_primary = request.query_params.get('is_primary')
+            
+            queryset = Guardian.objects.filter(teacher=teacher_profile)
+            if student:
+                queryset = queryset.filter(student_name__icontains=student)
+            if relation:
+                queryset = queryset.filter(relation=relation)
+            if is_primary is not None:
+                queryset = queryset.filter(is_primary=is_primary.lower() == 'true')
+            
+            guardians = queryset.order_by('-is_primary', 'student_name', 'guardian_name')
+            serializer = GuardianSerializer(guardians, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except TeacherProfile.DoesNotExist:
+            return Response(
+                {"error": "Teacher profile not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            import traceback
+            print(traceback.format_exc())
+            return Response(
+                {"error": f"Error fetching guardians: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def post(self, request):
+        """Create a new guardian record"""
+        try:
+            teacher_profile = TeacherProfile.objects.get(user=request.user)
+            serializer = GuardianSerializer(data=request.data)
+            if serializer.is_valid():
+                serializer.save(teacher=teacher_profile)
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except TeacherProfile.DoesNotExist:
+            return Response(
+                {"error": "Teacher profile not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def guardian_detail(request, pk):
+    """Retrieve, update, or delete a specific guardian record"""
+    try:
+        teacher_profile = TeacherProfile.objects.get(user=request.user)
+        guardian = get_object_or_404(Guardian, pk=pk, teacher=teacher_profile)
+        
+        if request.method == 'GET':
+            serializer = GuardianSerializer(guardian)
+            return Response(serializer.data)
+        
+        elif request.method in ['PUT', 'PATCH']:
+            partial = request.method == 'PATCH'
+            serializer = GuardianSerializer(
+                guardian, 
+                data=request.data, 
+                partial=partial
+            )
+            
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        elif request.method == 'DELETE':
+            guardian.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+    
+    except TeacherProfile.DoesNotExist:
+        return Response(
+            {"error": "Teacher profile not found"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Guardian.DoesNotExist:
+        return Response(
+            {"error": "Guardian not found"}, 
+            status=status.HTTP_404_NOT_FOUND
         )
 
 
