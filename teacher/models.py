@@ -12,7 +12,6 @@ class TeacherProfile(models.Model):
     def __str__(self):
         return self.user.username
 
-
 class Attendance(models.Model):
     STATUS_CHOICES = [
         ('Present', 'Present'),
@@ -26,6 +25,12 @@ class Attendance(models.Model):
         ('Male', 'Male'),
         ('Female', 'Female'),
     ]
+    TRANSACTION_TYPE_CHOICES = [
+        ('attendance', 'Attendance'),
+        ('drop-off', 'Drop-off'),
+        ('pick-up', 'Pick-up'),
+    ]
+    
     teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='attendances')
     student_name = models.CharField(max_length=100)
     student_lrn = models.CharField(max_length=50, blank=True, null=True)
@@ -41,14 +46,18 @@ class Attendance(models.Model):
         null=True,
         blank=True
     )
-
+    transaction_type = models.CharField(
+        max_length=20,
+        choices=TRANSACTION_TYPE_CHOICES,
+        default='attendance',
+        help_text="Type of transaction: regular attendance, drop-off, or pick-up"
+    )
+    
     class Meta:
         ordering = ['-date', '-timestamp']
-        unique_together = ['teacher', 'student_name', 'date', 'session']
 
     def __str__(self):
-        return f"{self.student_name} - {self.status} - {self.date}"
-
+        return f"{self.student_name} - {self.status} ({self.transaction_type}) - {self.date}"
 
 class Absence(models.Model):
     teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='absences')
@@ -63,7 +72,6 @@ class Absence(models.Model):
     def __str__(self):
         return f"{self.student_name} - Absent on {self.date}"
 
-
 class Dropout(models.Model):
     teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='dropouts')
     student_name = models.CharField(max_length=100)
@@ -76,7 +84,6 @@ class Dropout(models.Model):
 
     def __str__(self):
         return f"{self.student_name} - Dropout on {self.date}"
-
 
 class UnauthorizedPerson(models.Model):
     teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='unauthorized_persons')
