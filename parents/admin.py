@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Student, ParentGuardian
+from .models import Student, ParentGuardian, ParentMobileAccount
 
 @admin.register(Student)
 class StudentAdmin(admin.ModelAdmin):
@@ -66,3 +66,21 @@ class ParentGuardianAdmin(admin.ModelAdmin):
             except:
                 return qs.none()
         return qs
+
+
+@admin.register(ParentMobileAccount)
+class ParentMobileAccountAdmin(admin.ModelAdmin):
+    list_display = ['user', 'parent_guardian', 'is_active', 'created_at']
+    search_fields = ['user__username', 'parent_guardian__name', 'parent_guardian__student__lrn']
+    list_filter = ['is_active', 'created_at']
+    readonly_fields = ['created_at', 'updated_at']
+    
+    fieldsets = (
+        ('Account Information', {
+            'fields': ('user', 'parent_guardian', 'is_active')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
