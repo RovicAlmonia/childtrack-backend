@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import TeacherProfile, Attendance, Absence, Dropout, UnauthorizedPerson
+from .models import TeacherProfile, Guardian, Attendance, Absence, Dropout, UnauthorizedPerson
+
+
 class TeacherProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(write_only=True)
     password = serializers.CharField(write_only=True)
@@ -18,16 +20,45 @@ class TeacherProfileSerializer(serializers.ModelSerializer):
         username = validated_data.pop('username')
         password = validated_data.pop('password')
         name = validated_data.pop('name', username)  # Use name if provided, else username
-
+        
         # Create user with full name
         user = User.objects.create_user(
             username=username, 
             password=password,
             first_name=name
         )
-
         teacher_profile = TeacherProfile.objects.create(user=user, **validated_data)
         return teacher_profile
+
+
+class GuardianSerializer(serializers.ModelSerializer):
+    teacher_name = serializers.CharField(source='teacher.user.first_name', read_only=True)
+    lrn = serializers.CharField(source='student_lrn', required=False)  # Alias
+
+    class Meta:
+        model = Guardian
+        fields = [
+            'id', 
+            'teacher', 
+            'teacher_name', 
+            'student_name', 
+            'student_lrn', 
+            'lrn',
+            'guardian_name', 
+            'relation', 
+            'contact', 
+            'email',
+            'address', 
+            'occupation', 
+            'emergency_contact',
+            'photo', 
+            'is_primary',
+            'timestamp',
+            'updated_at'
+        ]
+        read_only_fields = ['timestamp', 'updated_at', 'teacher']
+
+
 class AttendanceSerializer(serializers.ModelSerializer):
     teacher_name = serializers.CharField(source='teacher.user.first_name', read_only=True)
     lrn = serializers.CharField(source='student_lrn', required=False)
@@ -38,6 +69,8 @@ class AttendanceSerializer(serializers.ModelSerializer):
         fields = ['id', 'teacher', 'teacher_name', 'student_name', 'student_lrn', 'lrn', 'gender', 
                   'date', 'status', 'session', 'qr_code_data', 'qr_data', 'timestamp']
         read_only_fields = ['timestamp', 'teacher']
+
+
 class AbsenceSerializer(serializers.ModelSerializer):
     teacher_name = serializers.CharField(source='teacher.user.first_name', read_only=True)
 
@@ -45,6 +78,8 @@ class AbsenceSerializer(serializers.ModelSerializer):
         model = Absence
         fields = ['id', 'teacher', 'teacher_name', 'student_name', 'date', 'reason', 'timestamp']
         read_only_fields = ['timestamp', 'teacher']
+
+
 class DropoutSerializer(serializers.ModelSerializer):
     teacher_name = serializers.CharField(source='teacher.user.first_name', read_only=True)
 
@@ -52,6 +87,8 @@ class DropoutSerializer(serializers.ModelSerializer):
         model = Dropout
         fields = ['id', 'teacher', 'teacher_name', 'student_name', 'date', 'reason', 'timestamp']
         read_only_fields = ['timestamp', 'teacher']
+
+
 class UnauthorizedPersonSerializer(serializers.ModelSerializer):
     teacher_name = serializers.CharField(source='teacher.user.first_name', read_only=True)
 
@@ -60,4 +97,3 @@ class UnauthorizedPersonSerializer(serializers.ModelSerializer):
         fields = ['id', 'teacher', 'teacher_name', 'name', 'address', 'age', 'student_name', 
                   'guardian_name', 'relation', 'contact', 'photo', 'timestamp']
         read_only_fields = ['timestamp', 'teacher']
-
