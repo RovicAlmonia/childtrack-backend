@@ -2,18 +2,23 @@ import logging
 import json
 from django.db import transaction
 from django.db.models import Prefetch
+from django.contrib.auth import authenticate
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.authtoken.models import Token
 
-from .models import Student, ParentGuardian
+from .models import Student, ParentGuardian, ParentMobileAccount
 from teacher.models import TeacherProfile
 from .serializers import (
     StudentSerializer,
     ParentGuardianSerializer,
     RegistrationSerializer,
-    TeacherStudentsSerializer
+    TeacherStudentsSerializer,
+    ParentMobileAccountSerializer,
+    ParentMobileRegistrationSerializer,
+    ParentMobileLoginSerializer
 )
 
 logger = logging.getLogger(__name__)
@@ -297,12 +302,101 @@ class AllTeachersStudentsView(APIView):
     """
     Admin view: return all teachers with their students (prefetched).
     """
-    permission_classes = [permissions.IsAuthenticated]  # you can restrict further (admin-only)
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         teachers = TeacherProfile.objects.prefetch_related(
             Prefetch('students', queryset=Student.objects.prefetch_related('parents_guardians')),
-            'parents_guardians'  # if needed
+            'parents_guardians'
         )
         serializer = TeacherStudentsSerializer(teachers, many=True)
         return Response(serializer.data)
+
+
+class ParentMobileRegistrationView(APIView):
+    """
+    Register a parent/guardian for mobile app access
+    Endpoint: /api/parents/mobile/register/
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = ParentMobileRegistrationSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            with transaction.atomic():
+                mobile_account = serializer.save()
+                
+                # Generate auth token
+                token, created = Token.objects.get_or_create(user=mobile_account.user)
+                
+                response_data = {
+                    "message": "Mobile account created successfully!",
+                    "account": ParentMobileAccountSerializer(mobile_account).data,
+                    "token": token.key
+                }
+                return Response(response_data, status=status.HTTP_201_CREATED)
+        except Exception as exc:
+            logger.exception("Mobile registration failed")
+            return Response({"error": f"Registration failed: {str(exc)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class ParentMobileLoginView(APIView):
+    """
+    Login endpoint for parent mobile app
+    Endpoint: /api/parents/mobile/login/
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = ParentMobileLoginSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        username = serializer.validated_data['username']
+        password = serializer.validated_data['password']
+
+        user = authenticate(username=username, password=password)
+        
+        if user is None:
+            return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # Check if user has a parent mobile account
+        try:
+            mobile_account = ParentMobileAccount.objects.get(user=user)
+            if not mobile_account.is_active:
+                return Response({"error": "Account is inactive"}, status=status.HTTP_403_FORBIDDEN)
+        except ParentMobileAccount.DoesNotExist:
+            return Response({"error": "Not a parent mobile account"}, status=status.HTTP_403_FORBIDDEN)
+
+        # Get or create token
+        token, created = Token.objects.get_or_create(user=user)
+
+        response_data = {
+            "message": "Login successful",
+            "token": token.key,
+            "account": ParentMobileAccountSerializer(mobile_account).data
+        }
+        return Response(response_data, status=status.HTTP_200_OK)
+
+
+class ParentsByLRNView(APIView):
+    """
+    Get parents/guardians by student LRN (for mobile registration)
+    Endpoint: /api/parents/by-lrn/<lrn>/
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, lrn):
+        try:
+            student = Student.objects.get(lrn=lrn)
+            parents = ParentGuardian.objects.filter(student=student)
+            serializer = ParentGuardianSerializer(parents, many=True)
+            return Response({
+                "student": StudentSerializer(student).data,
+                "parents_guardians": serializer.data
+            })
+        except Student.DoesNotExist:
+            return Response({"error": "Student not found"}, status=status.HTTP_404_NOT_FOUND)
