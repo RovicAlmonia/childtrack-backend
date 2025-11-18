@@ -25,15 +25,11 @@ class UnauthorizedPersonAdmin(admin.ModelAdmin):
 
 
 
-class MobileRegistration(models.Model):
-    phone_number = models.CharField(max_length=15, unique=True)
-    verification_code = models.CharField(max_length=6, blank=True, null=True)
-    is_verified = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        db_table = 'parents_mobileregistration'
-        
-    def __str__(self):
-        return f"{self.phone_number} - {'Verified' if self.is_verified else 'Unverified'}"
+@admin.register(MobileRegistration)
+class MobileRegistrationAdmin(admin.ModelAdmin):
+    list_display = ['phone_number', 'is_verified', 'created_at', 'updated_at']
+    search_fields = ['phone_number']
+    list_filter = ['is_verified', 'created_at']
+    date_hierarchy = 'created_at'
+    ordering = ['-created_at']
+    readonly_fields = ['created_at', 'updated_at']
