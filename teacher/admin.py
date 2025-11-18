@@ -24,12 +24,3 @@ class UnauthorizedPersonAdmin(admin.ModelAdmin):
     ordering = ['-timestamp']
 
 
-
-@admin.register(MobileRegistration)
-class MobileRegistrationAdmin(admin.ModelAdmin):
-    list_display = ['phone_number', 'is_verified', 'created_at', 'updated_at']
-    search_fields = ['phone_number']
-    list_filter = ['is_verified', 'created_at']
-    date_hierarchy = 'created_at'
-    ordering = ['-created_at']
-    readonly_fields = ['created_at', 'updated_at']
