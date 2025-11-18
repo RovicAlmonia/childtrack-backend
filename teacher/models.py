@@ -13,43 +13,6 @@ class TeacherProfile(models.Model):
         return self.user.username
 
 
-class Guardian(models.Model):
-    RELATION_CHOICES = [
-        ('Mother', 'Mother'),
-        ('Father', 'Father'),
-        ('Grandmother', 'Grandmother'),
-        ('Grandfather', 'Grandfather'),
-        ('Aunt', 'Aunt'),
-        ('Uncle', 'Uncle'),
-        ('Sister', 'Sister'),
-        ('Brother', 'Brother'),
-        ('Legal Guardian', 'Legal Guardian'),
-        ('Other', 'Other'),
-    ]
-    
-    teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='guardians')
-    student_name = models.CharField(max_length=100)
-    student_lrn = models.CharField(max_length=50, blank=True, null=True)
-    guardian_name = models.CharField(max_length=100)
-    relation = models.CharField(max_length=50, choices=RELATION_CHOICES)
-    contact = models.CharField(max_length=15)
-    email = models.EmailField(blank=True, null=True)
-    address = models.TextField()
-    occupation = models.CharField(max_length=100, blank=True, null=True)
-    emergency_contact = models.CharField(max_length=15, blank=True, null=True)
-    photo = models.TextField(blank=True, null=True)  # Base64 encoded image
-    is_primary = models.BooleanField(default=True)
-    timestamp = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ['-is_primary', 'student_name', 'guardian_name']
-        unique_together = ['teacher', 'student_name', 'guardian_name']
-
-    def __str__(self):
-        return f"{self.guardian_name} ({self.relation}) - {self.student_name}"
-
-
 class Attendance(models.Model):
     STATUS_CHOICES = [
         ('Present', 'Present'),
@@ -63,11 +26,11 @@ class Attendance(models.Model):
         ('Male', 'Male'),
         ('Female', 'Female'),
     ]
-    
     teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='attendances')
     student_name = models.CharField(max_length=100)
     student_lrn = models.CharField(max_length=50, blank=True, null=True)
     gender = models.CharField(max_length=10, choices=GENDER_CHOICES, default='Male')
+    guardian_name = models.CharField(max_length=100, blank=True, null=True)
     date = models.DateField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Present')
     qr_code_data = models.TextField(blank=True, null=True)
