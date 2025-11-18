@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Student, ParentGuardian, ParentMobileAccount
+from .models import Student, ParentGuardian, ParentMobileAccount,  MobileRegistration
 
 @admin.register(Student)
 class StudentAdmin(admin.ModelAdmin):
@@ -84,3 +84,13 @@ class ParentMobileAccountAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
+
+
+@admin.register(MobileRegistration)
+class MobileRegistrationAdmin(admin.ModelAdmin):
+    list_display = ['phone_number', 'is_verified', 'created_at', 'updated_at']
+    search_fields = ['phone_number']
+    list_filter = ['is_verified', 'created_at']
+    date_hierarchy = 'created_at'
+    ordering = ['-created_at']
+    readonly_fields = ['created_at', 'updated_at']
