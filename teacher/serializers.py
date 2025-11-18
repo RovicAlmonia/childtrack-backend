@@ -2,7 +2,6 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import TeacherProfile, Attendance, Absence, Dropout, UnauthorizedPerson
 
-
 class TeacherProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(write_only=True)
     password = serializers.CharField(write_only=True)
@@ -30,7 +29,6 @@ class TeacherProfileSerializer(serializers.ModelSerializer):
         teacher_profile = TeacherProfile.objects.create(user=user, **validated_data)
         return teacher_profile
 
-
 class AttendanceSerializer(serializers.ModelSerializer):
     teacher_name = serializers.CharField(source='teacher.user.first_name', read_only=True)
     lrn = serializers.CharField(source='student_lrn', required=False)
@@ -40,9 +38,9 @@ class AttendanceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Attendance
         fields = ['id', 'teacher', 'teacher_name', 'student_name', 'student_lrn', 'lrn', 'gender', 
-                  'guardian_name', 'parent', 'date', 'status', 'session', 'qr_code_data', 'qr_data', 'timestamp']
+                  'guardian_name', 'parent', 'date', 'status', 'session', 'transaction_type',
+                  'qr_code_data', 'qr_data', 'timestamp']
         read_only_fields = ['timestamp', 'teacher']
-
 
 class AbsenceSerializer(serializers.ModelSerializer):
     teacher_name = serializers.CharField(source='teacher.user.first_name', read_only=True)
@@ -52,7 +50,6 @@ class AbsenceSerializer(serializers.ModelSerializer):
         fields = ['id', 'teacher', 'teacher_name', 'student_name', 'date', 'reason', 'timestamp']
         read_only_fields = ['timestamp', 'teacher']
 
-
 class DropoutSerializer(serializers.ModelSerializer):
     teacher_name = serializers.CharField(source='teacher.user.first_name', read_only=True)
 
@@ -60,7 +57,6 @@ class DropoutSerializer(serializers.ModelSerializer):
         model = Dropout
         fields = ['id', 'teacher', 'teacher_name', 'student_name', 'date', 'reason', 'timestamp']
         read_only_fields = ['timestamp', 'teacher']
-
 
 class UnauthorizedPersonSerializer(serializers.ModelSerializer):
     teacher_name = serializers.CharField(source='teacher.user.first_name', read_only=True)
