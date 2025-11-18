@@ -102,18 +102,3 @@ class UnauthorizedPerson(models.Model):
 
     def __str__(self):
         return f"{self.name} - {self.student_name}"
-
-
-
-class MobileRegistration(models.Model):
-    phone_number = models.CharField(max_length=15, unique=True)
-    verification_code = models.CharField(max_length=6, blank=True, null=True)
-    is_verified = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        db_table = 'parents_mobileregistration'
-        
-    def __str__(self):
-        return f"{self.phone_number} - {'Verified' if self.is_verified else 'Unverified'}"
