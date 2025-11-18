@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+
 class TeacherProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     age = models.IntegerField()
@@ -7,8 +8,48 @@ class TeacherProfile(models.Model):
     section = models.CharField(max_length=50)
     contact = models.CharField(max_length=15)
     address = models.TextField()
+
     def __str__(self):
         return self.user.username
+
+
+class Guardian(models.Model):
+    RELATION_CHOICES = [
+        ('Mother', 'Mother'),
+        ('Father', 'Father'),
+        ('Grandmother', 'Grandmother'),
+        ('Grandfather', 'Grandfather'),
+        ('Aunt', 'Aunt'),
+        ('Uncle', 'Uncle'),
+        ('Sister', 'Sister'),
+        ('Brother', 'Brother'),
+        ('Legal Guardian', 'Legal Guardian'),
+        ('Other', 'Other'),
+    ]
+    
+    teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='guardians')
+    student_name = models.CharField(max_length=100)
+    student_lrn = models.CharField(max_length=50, blank=True, null=True)
+    guardian_name = models.CharField(max_length=100)
+    relation = models.CharField(max_length=50, choices=RELATION_CHOICES)
+    contact = models.CharField(max_length=15)
+    email = models.EmailField(blank=True, null=True)
+    address = models.TextField()
+    occupation = models.CharField(max_length=100, blank=True, null=True)
+    emergency_contact = models.CharField(max_length=15, blank=True, null=True)
+    photo = models.TextField(blank=True, null=True)  # Base64 encoded image
+    is_primary = models.BooleanField(default=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-is_primary', 'student_name', 'guardian_name']
+        unique_together = ['teacher', 'student_name', 'guardian_name']
+
+    def __str__(self):
+        return f"{self.guardian_name} ({self.relation}) - {self.student_name}"
+
+
 class Attendance(models.Model):
     STATUS_CHOICES = [
         ('Present', 'Present'),
@@ -18,11 +59,11 @@ class Attendance(models.Model):
         ('Pick-up', 'Pick-up'),
         ('Dropped Out', 'Dropped Out'),
     ]
-
     GENDER_CHOICES = [
         ('Male', 'Male'),
         ('Female', 'Female'),
     ]
+    
     teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='attendances')
     student_name = models.CharField(max_length=100)
     student_lrn = models.CharField(max_length=50, blank=True, null=True)
@@ -37,31 +78,43 @@ class Attendance(models.Model):
         null=True,
         blank=True
     )
+
     class Meta:
         ordering = ['-date', '-timestamp']
         unique_together = ['teacher', 'student_name', 'date', 'session']
+
     def __str__(self):
         return f"{self.student_name} - {self.status} - {self.date}"
+
+
 class Absence(models.Model):
     teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='absences')
     student_name = models.CharField(max_length=100)
     date = models.DateField()
     reason = models.TextField()
     timestamp = models.DateTimeField(auto_now_add=True)
+
     class Meta:
         ordering = ['-date', '-timestamp']
+
     def __str__(self):
         return f"{self.student_name} - Absent on {self.date}"
+
+
 class Dropout(models.Model):
     teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='dropouts')
     student_name = models.CharField(max_length=100)
     date = models.DateField()
     reason = models.TextField()
     timestamp = models.DateTimeField(auto_now_add=True)
+
     class Meta:
         ordering = ['-date', '-timestamp']
+
     def __str__(self):
         return f"{self.student_name} - Dropout on {self.date}"
+
+
 class UnauthorizedPerson(models.Model):
     teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='unauthorized_persons')
     name = models.CharField(max_length=100)
@@ -73,7 +126,9 @@ class UnauthorizedPerson(models.Model):
     contact = models.CharField(max_length=15)
     photo = models.TextField(blank=True, null=True)  # Base64 encoded image
     timestamp = models.DateTimeField(auto_now_add=True)
+
     class Meta:
         ordering = ['-timestamp']
+
     def __str__(self):
         return f"{self.name} - {self.student_name}"
