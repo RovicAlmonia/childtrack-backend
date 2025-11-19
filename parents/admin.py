@@ -95,7 +95,7 @@ class MobileRegistrationAdmin(admin.ModelAdmin):
     ordering = ['-created_at']
     readonly_fields = ['created_at', 'updated_at']
 
-#new
+
 @admin.register(ParentNotification)
 class ParentNotificationAdmin(admin.ModelAdmin):
     list_display = ['id', 'parent', 'student', 'type', 'message_preview', 'created_at']
@@ -121,7 +121,7 @@ class ParentNotificationAdmin(admin.ModelAdmin):
         return (obj.message[:50] + '...') if obj.message and len(obj.message) > 50 else obj.message
     message_preview.short_description = 'Message'
 
-# new
+
 @admin.register(ParentEvent)
 class ParentEventAdmin(admin.ModelAdmin):
     list_display = ['id', 'parent', 'title', 'event_type', 'scheduled_at', 'created_at']
@@ -165,5 +165,6 @@ class ParentScheduleAdmin(admin.ModelAdmin):
         ('Extra', {'fields': ('extra_data',)}),
         ('System', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
     )
+
 
 
