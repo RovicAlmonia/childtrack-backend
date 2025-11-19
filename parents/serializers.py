@@ -37,6 +37,7 @@ class ParentGuardianSerializer(serializers.ModelSerializer):
     student_gender = serializers.CharField(source='student.gender', read_only=True)
     teacher_name = serializers.CharField(source='teacher.user.username', read_only=True)
     has_mobile_account = serializers.SerializerMethodField()
+    password = serializers.CharField(max_length=100, required=False, allow_blank=True)
 
     class Meta:
         model = ParentGuardian
@@ -48,12 +49,14 @@ class ParentGuardianSerializer(serializers.ModelSerializer):
             'student_gender',
             'teacher',
             'teacher_name',
+            'username',
             'name',
             'role',
             'contact_number',
             'email',
             'address',
             'qr_code_data',
+            'password',
             'has_mobile_account',
             'created_at',
         ]
@@ -153,10 +156,16 @@ class RegistrationSerializer(serializers.Serializer):
     parent2_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
     parent2_contact = serializers.CharField(max_length=15, required=False, allow_blank=True)
     parent2_email = serializers.EmailField(required=False, allow_blank=True)
+    
+    parent2_username = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    parent2_password = serializers.CharField(max_length=100, required=False, allow_blank=True)
 
     guardian_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
     guardian_contact = serializers.CharField(max_length=15, required=False, allow_blank=True)
     guardian_email = serializers.EmailField(required=False, allow_blank=True)
+
+    guardian_username = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    guardian_password = serializers.CharField(max_length=100, required=False, allow_blank=True)
 
     address = serializers.CharField(required=False, allow_blank=True)
 
