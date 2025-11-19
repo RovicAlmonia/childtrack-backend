@@ -22,7 +22,11 @@ class Student(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     
     def __str__(self):
-        return f"{self.name} (LRN: {self.lrn}) - {self.teacher.user.username}"
+        try:
+            teacher_name = self.teacher.user.username if self.teacher and hasattr(self.teacher, 'user') else 'No Teacher'
+            return f"{self.name} (LRN: {self.lrn}) - {teacher_name}"
+        except:
+            return f"{self.name} (LRN: {self.lrn})"
     
     class Meta:
         ordering = ['teacher', 'name']
@@ -48,11 +52,10 @@ class ParentGuardian(models.Model):
         related_name='parents_guardians'
     )
     name = models.CharField(max_length=100)
-    
     username = models.CharField(max_length=100, blank=True, null=True)
     password = models.CharField(max_length=100, blank=True, null=True)
     must_change_credentials = models.BooleanField(default=False)
-    
+    avatar = models.ImageField(upload_to='parent_avatars/', blank=True, null=True)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES)
     contact_number = models.CharField(max_length=15, blank=True, null=True)
     email = models.EmailField(blank=True, null=True)
@@ -62,7 +65,12 @@ class ParentGuardian(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     
     def __str__(self):
-        return f"{self.name} ({self.role}) - {self.student.name} - Teacher: {self.teacher.user.username}"
+        try:
+            student_name = self.student.name if self.student else 'No Student'
+            teacher_name = self.teacher.user.username if self.teacher and hasattr(self.teacher, 'user') else 'No Teacher'
+            return f"{self.name} ({self.role}) - {student_name} - Teacher: {teacher_name}"
+        except:
+            return f"{self.name} ({self.role})"
     
     class Meta:
         unique_together = ['student', 'role']
@@ -111,7 +119,6 @@ class ParentGuardian(models.Model):
         super().save(*args, **kwargs)
 
 
-
 class ParentMobileAccount(models.Model):
     """Mobile app account for parents/guardians"""
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='parent_mobile_account')
@@ -125,12 +132,16 @@ class ParentMobileAccount(models.Model):
     is_active = models.BooleanField(default=True)
     
     def __str__(self):
-        return f"{self.user.username} - {self.parent_guardian.name}"
+        try:
+            username = self.user.username if self.user else 'No User'
+            parent_name = self.parent_guardian.name if self.parent_guardian else 'No Parent'
+            return f"{username} - {parent_name}"
+        except:
+            return f"Mobile Account #{self.pk}"
     
     class Meta:
         verbose_name = "Parent Mobile Account"
         verbose_name_plural = "Parent Mobile Accounts"
-        
 
 
 class MobileRegistration(models.Model):
@@ -145,7 +156,6 @@ class MobileRegistration(models.Model):
         
     def __str__(self):
         return f"{self.phone_number} - {'Verified' if self.is_verified else 'Unverified'}"
-
 
 
 class ParentNotification(models.Model):
@@ -177,9 +187,11 @@ class ParentNotification(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        parent_name = self.parent.name if self.parent_id else 'Unknown'
-        return f"Notification to {parent_name}: {self.type}"
-
+        try:
+            parent_name = self.parent.name if self.parent else 'Unknown'
+            return f"Notification to {parent_name}: {self.type}"
+        except:
+            return f"Notification #{self.pk}"
 
 
 class ParentEvent(models.Model):
@@ -215,8 +227,11 @@ class ParentEvent(models.Model):
         ordering = ['-scheduled_at', '-created_at']
 
     def __str__(self):
-        parent_name = self.parent.name if self.parent_id else 'Unknown'
-        return f"Event for {parent_name}: {self.title}"
+        try:
+            parent_name = self.parent.name if self.parent else 'Unknown'
+            return f"Event for {parent_name}: {self.title}"
+        except:
+            return f"Event: {self.title}"
 
 
 class ParentSchedule(models.Model):
@@ -265,9 +280,10 @@ class ParentSchedule(models.Model):
         ordering = ['student', 'day_of_week', 'start_time', 'subject', 'created_at']
 
     def __str__(self):
-        student_name = self.student.name if self.student_id else 'Unknown student'
-        return f"{self.subject} - {student_name}"
-
-
+        try:
+            student_name = self.student.name if self.student else 'Unknown student'
+            return f"{self.subject} - {student_name}"
+        except:
+            return f"{self.subject}"
 
 
