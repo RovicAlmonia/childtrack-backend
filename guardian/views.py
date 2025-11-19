@@ -7,6 +7,7 @@ from .models import Guardian
 from .serializers import GuardianSerializer
 import base64
 from django.core.files.base import ContentFile
+from django.db.models import Q
 
 class GuardianView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -240,6 +241,74 @@ class GuardianView(APIView):
                 {"error": f"Error deleting guardian: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class GuardianByTeacherView(APIView):
+    """Separate view to get guardians by teacher ID"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request, teacher_id):
+        """Get all guardians for a specific teacher by teacher ID"""
+        try:
+            # Get the teacher profile
+            try:
+                teacher_profile = TeacherProfile.objects.get(id=teacher_id)
+            except TeacherProfile.DoesNotExist:
+                return Response(
+                    {"error": f"Teacher profile with ID {teacher_id} not found."},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Get guardians for this teacher
+            guardians = Guardian.objects.filter(teacher=teacher_profile).order_by('-timestamp')
+            serializer = GuardianSerializer(guardians, many=True, context={'request': request})
+            
+            return Response({
+                "count": guardians.count(),
+                "teacher_id": teacher_profile.id,
+                "teacher_name": teacher_profile.user.get_full_name() or teacher_profile.user.username,
+                "results": serializer.data
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {"error": f"Error fetching guardians: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+# new
+class GuardianPublicListView(APIView):
+    """
+    Lightweight read-only endpoint so parents/mobile clients can view pending guardians.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        teacher_id = request.query_params.get('teacher')
+        student_name = request.query_params.get('student_name')
+        search = request.query_params.get('search')
+        limit = request.query_params.get('limit')
+
+        queryset = Guardian.objects.all().order_by('-timestamp')
+        if teacher_id:
+            queryset = queryset.filter(teacher_id=teacher_id)
+        if student_name:
+            queryset = queryset.filter(student_name__iexact=student_name)
+        if search:
+            queryset = queryset.filter(
+                Q(name__icontains=search)
+                | Q(student_name__icontains=search)
+                | Q(relationship__icontains=search)
+            )
+        if limit:
+            try:
+                limit_value = max(1, min(int(limit), 500))
+                queryset = queryset[:limit_value]
+            except (TypeError, ValueError):
+                pass
+
+        serializer = GuardianSerializer(queryset, many=True, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class GuardianByTeacherView(APIView):
