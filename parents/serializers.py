@@ -38,8 +38,8 @@ class ParentGuardianSerializer(serializers.ModelSerializer):
     teacher_name = serializers.CharField(source='teacher.user.username', read_only=True)
     has_mobile_account = serializers.SerializerMethodField()
     password = serializers.CharField(max_length=100, required=False, allow_blank=True)
-        must_change_credentials = serializers.BooleanField(read_only=True)
-
+    must_change_credentials = serializers.BooleanField(read_only=True)
+    avatar = serializers.ImageField(required=False, allow_null=True)
 
     class Meta:
         model = ParentGuardian
@@ -59,9 +59,8 @@ class ParentGuardianSerializer(serializers.ModelSerializer):
             'address',
             'qr_code_data',
             'password',
-            
             'must_change_credentials',
-            
+            'avatar',
             'has_mobile_account',
             'created_at',
         ]
@@ -154,21 +153,18 @@ class RegistrationSerializer(serializers.Serializer):
     parent1_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
     parent1_contact = serializers.CharField(max_length=15, required=False, allow_blank=True)
     parent1_email = serializers.EmailField(required=False, allow_blank=True)
-    #new
     parent1_username = serializers.CharField(max_length=150, required=False, allow_blank=True)
     parent1_password = serializers.CharField(max_length=100, required=False, allow_blank=True)
 
     parent2_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
     parent2_contact = serializers.CharField(max_length=15, required=False, allow_blank=True)
     parent2_email = serializers.EmailField(required=False, allow_blank=True)
-    
     parent2_username = serializers.CharField(max_length=150, required=False, allow_blank=True)
     parent2_password = serializers.CharField(max_length=100, required=False, allow_blank=True)
 
     guardian_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
     guardian_contact = serializers.CharField(max_length=15, required=False, allow_blank=True)
     guardian_email = serializers.EmailField(required=False, allow_blank=True)
-
     guardian_username = serializers.CharField(max_length=150, required=False, allow_blank=True)
     guardian_password = serializers.CharField(max_length=100, required=False, allow_blank=True)
 
@@ -211,7 +207,6 @@ class TeacherStudentsSerializer(serializers.ModelSerializer):
 
     def get_total_parents_guardians(self, obj):
         return obj.parents_guardians.count()
-
 
 
 class ParentNotificationSerializer(serializers.ModelSerializer):
@@ -355,5 +350,3 @@ class ParentScheduleSerializer(serializers.ModelSerializer):
         if start_str and end_str:
             return f"{start_str} - {end_str}"
         return start_str or end_str
-
-
