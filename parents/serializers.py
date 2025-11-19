@@ -38,6 +38,8 @@ class ParentGuardianSerializer(serializers.ModelSerializer):
     teacher_name = serializers.CharField(source='teacher.user.username', read_only=True)
     has_mobile_account = serializers.SerializerMethodField()
     password = serializers.CharField(max_length=100, required=False, allow_blank=True)
+        must_change_credentials = serializers.BooleanField(read_only=True)
+
 
     class Meta:
         model = ParentGuardian
@@ -57,6 +59,9 @@ class ParentGuardianSerializer(serializers.ModelSerializer):
             'address',
             'qr_code_data',
             'password',
+            
+            'must_change_credentials',
+            
             'has_mobile_account',
             'created_at',
         ]
