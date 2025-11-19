@@ -1,7 +1,7 @@
 import logging
 import json
 from django.db import transaction
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from django.contrib.auth import authenticate
 from rest_framework import permissions, status
 from rest_framework.response import Response
@@ -9,7 +9,6 @@ from rest_framework.views import APIView
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.authtoken.models import Token
 
-#new
 from django.utils import timezone
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
@@ -24,7 +23,6 @@ from .serializers import (
     ParentMobileAccountSerializer,
     ParentMobileRegistrationSerializer,
     ParentMobileLoginSerializer,
-    #new
     ParentNotificationSerializer,
     ParentEventSerializer,
     ParentScheduleSerializer,
@@ -86,7 +84,6 @@ def _perform_registration(data, request_user=None):
                 "name": data["parent1_name"],
                 "contact": data.get("parent1_contact", ""),
                 "email": data.get("parent1_email", ""),
-                #new
                 "username": data.get("parent1_username", ""),
                 "password": data.get("parent1_password", ""),
             }
@@ -125,10 +122,8 @@ def _perform_registration(data, request_user=None):
             teacher=teacher,
             name=parent_data["name"],
             role=parent_data["role"],
-            #new
             username=parent_data.get("username", ""),
             password=parent_data.get("password", ""),
-            
             contact_number=parent_data["contact"],
             email=parent_data["email"],
             address=data.get("address", ""),
@@ -273,96 +268,22 @@ class ParentGuardianListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = StandardPagination
 
-     def get(self, request, pk):
+    def get(self, request):
         try:
-            parent = ParentGuardian.objects.get(pk=pk)
-        except ParentGuardian.DoesNotExist:
-            return Response({'error': 'Parent not found'}, status=status.HTTP_404_NOT_FOUND)
-
-        serializer = ParentGuardianSerializer(parent, context={'request': request})
-        return Response(serializer.data)
-
-    def patch(self, request, pk):
-        try:
-            parent = ParentGuardian.objects.get(pk=pk)
-        except ParentGuardian.DoesNotExist:
-            return Response({'error': 'Parent not found'}, status=status.HTTP_404_NOT_FOUND)
-
-        data = request.data
-
-        logger.debug('ParentDetailView.patch called; request.FILES keys: %s', list(getattr(request, 'FILES', {}).keys()))
-
-        # Accept both JSON and multipart form-data. Update known fields only.
-        updated = False
-        # capture originals to decide if must_change_credentials can be cleared
-        orig_username = parent.username
-        orig_password = parent.password
-        orig_must = getattr(parent, 'must_change_credentials', False)
-
-        # Handle password change explicitly: require current_password match
-        changed_password = False
-        # request.data may be a QueryDict (not a plain dict), so don't rely on isinstance(data, dict)
-        if 'password' in data:
-            new_pw = data.get('password')
-            current_pw = data.get('current_password')
-            # If this parent record is flagged as requiring credential change on first login,
-            # allow changing the password without providing the current_password. This supports
-            # the mobile first-login flow where temporary credentials were auto-generated.
-            if orig_must:
-                parent.password = str(new_pw)
-                updated = True
-                changed_password = True
-            else:
-                if not current_pw:
-                    return Response({'error': 'current_password is required to change password.'}, status=status.HTTP_400_BAD_REQUEST)
-                # simple plain-text compare (project currently stores plain passwords)
-                if (parent.password or '') != str(current_pw):
-                    return Response({'error': 'Current password is incorrect.'}, status=status.HTTP_401_UNAUTHORIZED)
-                parent.password = str(new_pw)
-                updated = True
-                changed_password = True
-
-        changed_username = False
-        for field in ('name', 'username', 'contact_number', 'address', 'email'):
-            if field in data:
-                # track username change
-                if field == 'username':
-                    new_un = data.get('username')
-                    if new_un is not None and str(new_un) != (orig_username or ''):
-                        changed_username = True
-                setattr(parent, field, data.get(field))
-                updated = True
-
-        # handle avatar upload from multipart/form-data
-        if getattr(request, 'FILES', None) and 'avatar' in request.FILES:
-            uploaded = request.FILES['avatar']
-            logger.debug('Saving uploaded avatar file: %s (size=%s)', uploaded.name, getattr(uploaded, 'size', 'unknown'))
-            print(f"[ParentDetailView] received avatar file: {uploaded.name}, size={getattr(uploaded, 'size', 'unknown')}")
-            parent.avatar = uploaded
-            updated = True
-
-        if updated:
-            # If parent was flagged to change credentials on first login, and the request
-            # includes both a username change and a password change, clear that flag.
-            if orig_must and changed_username and changed_password:
-                parent.must_change_credentials = False
-            parent.save()
-            # debug after save
-            try:
-                avatar_name = parent.avatar.name
-                avatar_path = getattr(parent.avatar, 'path', None)
-            except Exception:
-                avatar_name = None
-                avatar_path = None
-            logger.debug('Parent saved. avatar.name=%s avatar.path=%s', avatar_name, avatar_path)
-            print(f"[ParentDetailView] parent.save() completed. avatar.name={avatar_name} avatar.path={avatar_path}")
-        serializer = ParentGuardianSerializer(parent, context={'request': request})
-        debug_info = {'updated': updated, 'avatar_name': avatar_name if updated else None, 'avatar_path': avatar_path if updated else None}
-        # Return serializer data at top-level (keeps previous client expectations) and include debug info
-        response_data = dict(serializer.data)
-        response_data['debug'] = debug_info
-        return Response(response_data)
-
+            teacher = TeacherProfile.objects.get(user=request.user)
+            qs = ParentGuardian.objects.filter(teacher=teacher)
+            
+            # Optional LRN filter
+            lrn = request.query_params.get('lrn')
+            if lrn:
+                qs = qs.filter(student__lrn=lrn)
+            
+            paginator = self.pagination_class()
+            page = paginator.paginate_queryset(qs, request)
+            serializer = ParentGuardianSerializer(page, many=True)
+            return paginator.get_paginated_response(serializer.data)
+        except TeacherProfile.DoesNotExist:
+            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
 
 
 class StudentDetailView(APIView):
@@ -492,7 +413,6 @@ class ParentsByLRNView(APIView):
             return Response({"error": "Student not found"}, status=status.HTTP_404_NOT_FOUND)
 
 
-#new
 class ParentGuardianPublicListView(APIView):
     """
     Lightweight read-only list so clients (like the mobile app) can fetch guardians
@@ -526,7 +446,7 @@ class ParentGuardianPublicListView(APIView):
         serializer = ParentGuardianSerializer(queryset, many=True)
         return Response(serializer.data)
 
-# new
+
 class ParentLoginView(APIView):
     """
     Simple login for Parent/Guardian records stored in ParentGuardian model.
@@ -555,7 +475,7 @@ class ParentLoginView(APIView):
         serializer = ParentGuardianSerializer(pg)
         return Response({"parent": serializer.data}, status=status.HTTP_200_OK)
 
-# new
+
 class ParentDetailView(APIView):
     """Retrieve or partially update a ParentGuardian by primary key.
 
@@ -585,19 +505,42 @@ class ParentDetailView(APIView):
 
         # Accept both JSON and multipart form-data. Update known fields only.
         updated = False
+        # capture originals to decide if must_change_credentials can be cleared
+        orig_username = parent.username
+        orig_password = parent.password
+        orig_must = getattr(parent, 'must_change_credentials', False)
+
         # Handle password change explicitly: require current_password match
-        if isinstance(data, dict) and 'password' in data:
+        changed_password = False
+        # request.data may be a QueryDict (not a plain dict), so don't rely on isinstance(data, dict)
+        if 'password' in data:
             new_pw = data.get('password')
             current_pw = data.get('current_password')
-            if not current_pw:
-                return Response({'error': 'current_password is required to change password.'}, status=status.HTTP_400_BAD_REQUEST)
-            # simple plain-text compare (project currently stores plain passwords)
-            if (parent.password or '') != str(current_pw):
-                return Response({'error': 'Current password is incorrect.'}, status=status.HTTP_401_UNAUTHORIZED)
-            parent.password = str(new_pw)
-            updated = True
+            # If this parent record is flagged as requiring credential change on first login,
+            # allow changing the password without providing the current_password. This supports
+            # the mobile first-login flow where temporary credentials were auto-generated.
+            if orig_must:
+                parent.password = str(new_pw)
+                updated = True
+                changed_password = True
+            else:
+                if not current_pw:
+                    return Response({'error': 'current_password is required to change password.'}, status=status.HTTP_400_BAD_REQUEST)
+                # simple plain-text compare (project currently stores plain passwords)
+                if (parent.password or '') != str(current_pw):
+                    return Response({'error': 'Current password is incorrect.'}, status=status.HTTP_401_UNAUTHORIZED)
+                parent.password = str(new_pw)
+                updated = True
+                changed_password = True
+
+        changed_username = False
         for field in ('name', 'username', 'contact_number', 'address', 'email'):
             if field in data:
+                # track username change
+                if field == 'username':
+                    new_un = data.get('username')
+                    if new_un is not None and str(new_un) != (orig_username or ''):
+                        changed_username = True
                 setattr(parent, field, data.get(field))
                 updated = True
 
@@ -610,6 +553,10 @@ class ParentDetailView(APIView):
             updated = True
 
         if updated:
+            # If parent was flagged to change credentials on first login, and the request
+            # includes both a username change and a password change, clear that flag.
+            if orig_must and changed_username and changed_password:
+                parent.must_change_credentials = False
             parent.save()
             # debug after save
             try:
@@ -620,14 +567,18 @@ class ParentDetailView(APIView):
                 avatar_path = None
             logger.debug('Parent saved. avatar.name=%s avatar.path=%s', avatar_name, avatar_path)
             print(f"[ParentDetailView] parent.save() completed. avatar.name={avatar_name} avatar.path={avatar_path}")
+        else:
+            avatar_name = None
+            avatar_path = None
+            
         serializer = ParentGuardianSerializer(parent, context={'request': request})
-        debug_info = {'updated': updated, 'avatar_name': avatar_name if updated else None, 'avatar_path': avatar_path if updated else None}
+        debug_info = {'updated': updated, 'avatar_name': avatar_name, 'avatar_path': avatar_path}
         # Return serializer data at top-level (keeps previous client expectations) and include debug info
         response_data = dict(serializer.data)
         response_data['debug'] = debug_info
         return Response(response_data)
 
-# new
+
 class ParentNotificationListCreateView(APIView):
     """
     Read/create notifications tied to ParentGuardian records.
@@ -662,7 +613,7 @@ class ParentNotificationListCreateView(APIView):
             return Response(output, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-# new
+
 class ParentEventListCreateView(APIView):
     """
     Read/create events tied to ParentGuardian records.
@@ -772,5 +723,3 @@ class ParentScheduleListCreateView(APIView):
             output = ParentScheduleSerializer(schedule).data
             return Response(output, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
