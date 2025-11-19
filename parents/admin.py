@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Student, ParentGuardian, ParentMobileAccount,  MobileRegistration
+from .models import Student, ParentGuardian, ParentMobileAccount,  MobileRegistration,  ParentNotification, ParentEvent, ParentSchedule
 
 @admin.register(Student)
 class StudentAdmin(admin.ModelAdmin):
