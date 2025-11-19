@@ -10,6 +10,14 @@ from .views import (
     ParentMobileRegistrationView,
     ParentMobileLoginView,
     ParentsByLRNView,
+
+    #new
+    ParentLoginView,
+    ParentDetailView,
+    ParentNotificationListCreateView,
+    ParentEventListCreateView,
+    ParentScheduleListCreateView,
+
 )
 
 urlpatterns = [
@@ -25,4 +33,12 @@ urlpatterns = [
     path('mobile/register/', ParentMobileRegistrationView.as_view(), name='mobile-register'),
     path('mobile/login/', ParentMobileLoginView.as_view(), name='mobile-login'),
     path('by-lrn/<str:lrn>/', ParentsByLRNView.as_view(), name='parents-by-lrn'),
+
+    #new
+    path('login/', ParentLoginView.as_view(), name='parent-login'),
+    path('parents/<int:pk>/', ParentDetailView.as_view(), name='parent-detail'),
+    path('notifications/', ParentNotificationListCreateView.as_view(), name='parent-notifications'),
+    path('events/', ParentEventListCreateView.as_view(), name='parent-events'),
+    path('schedules/', ParentScheduleListCreateView.as_view(), name='parent-schedules'),
+    path('parents/public/', ParentGuardianPublicListView.as_view(), name='parents-public-list'),
 ]
