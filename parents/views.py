@@ -9,7 +9,13 @@ from rest_framework.views import APIView
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.authtoken.models import Token
 
-from .models import Student, ParentGuardian, ParentMobileAccount
+#new
+from django.utils import timezone
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+
+from .models import Student, ParentGuardian, ParentMobileAccount, #new 
+ParentNotification, ParentEvent, ParentSchedule
+
 from teacher.models import TeacherProfile
 from .serializers import (
     StudentSerializer,
@@ -18,7 +24,11 @@ from .serializers import (
     TeacherStudentsSerializer,
     ParentMobileAccountSerializer,
     ParentMobileRegistrationSerializer,
-    ParentMobileLoginSerializer
+    ParentMobileLoginSerializer,
+    #new
+    ParentNotificationSerializer,
+    ParentEventSerializer,
+    ParentScheduleSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,6 +87,9 @@ def _perform_registration(data, request_user=None):
                 "name": data["parent1_name"],
                 "contact": data.get("parent1_contact", ""),
                 "email": data.get("parent1_email", ""),
+                #new
+                "username": data.get("parent1_username", ""),
+                "password": data.get("parent1_password", ""),
             }
         )
     if data.get("parent2_name"):
@@ -113,6 +126,10 @@ def _perform_registration(data, request_user=None):
             teacher=teacher,
             name=parent_data["name"],
             role=parent_data["role"],
+            #new
+            username=parent_data.get("username", ""),
+            password=parent_data.get("password", ""),
+            
             contact_number=parent_data["contact"],
             email=parent_data["email"],
             address=data.get("address", ""),
@@ -400,3 +417,285 @@ class ParentsByLRNView(APIView):
             })
         except Student.DoesNotExist:
             return Response({"error": "Student not found"}, status=status.HTTP_404_NOT_FOUND)
+
+
+#new
+class ParentGuardianPublicListView(APIView):
+    """
+    Lightweight read-only list so clients (like the mobile app) can fetch guardians
+    by username, student LRN, or role without requiring teacher authentication.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        username = request.query_params.get('username')
+        lrn = request.query_params.get('lrn')
+        student_name = request.query_params.get('student')
+        role = request.query_params.get('role')
+        limit = request.query_params.get('limit')
+
+        queryset = ParentGuardian.objects.select_related('student', 'teacher').all()
+        if username:
+            queryset = queryset.filter(username=username)
+        if lrn:
+            queryset = queryset.filter(student__lrn=lrn)
+        if student_name:
+            queryset = queryset.filter(student__name__iexact=student_name)
+        if role:
+            queryset = queryset.filter(role__iexact=role)
+        if limit:
+            try:
+                limit_value = max(1, min(int(limit), 500))
+                queryset = queryset[:limit_value]
+            except (TypeError, ValueError):
+                logger.warning("Invalid limit param for ParentGuardianPublicListView: %s", limit)
+
+        serializer = ParentGuardianSerializer(queryset, many=True)
+        return Response(serializer.data)
+
+# new
+class ParentLoginView(APIView):
+    """
+    Simple login for Parent/Guardian records stored in ParentGuardian model.
+    This endpoint accepts POST { username, password } and returns the parent record
+    if the plaintext password matches the stored `password` field.
+    """
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        username = request.data.get("username")
+        password = request.data.get("password")
+
+        if not username or not password:
+            return Response({"error": "Username and password are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            pg = ParentGuardian.objects.get(username=username)
+        except ParentGuardian.DoesNotExist:
+            return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Passwords are stored in plaintext in this model (per project choice)
+        if (pg.password or "") != password:
+            return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = ParentGuardianSerializer(pg)
+        return Response({"parent": serializer.data}, status=status.HTTP_200_OK)
+
+# new
+class ParentDetailView(APIView):
+    """Retrieve or partially update a ParentGuardian by primary key.
+
+    Endpoint: GET/PATCH /api/parents/parent/<pk>/
+    """
+    permission_classes = [permissions.AllowAny]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get(self, request, pk):
+        try:
+            parent = ParentGuardian.objects.get(pk=pk)
+        except ParentGuardian.DoesNotExist:
+            return Response({'error': 'Parent not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = ParentGuardianSerializer(parent, context={'request': request})
+        return Response(serializer.data)
+
+    def patch(self, request, pk):
+        try:
+            parent = ParentGuardian.objects.get(pk=pk)
+        except ParentGuardian.DoesNotExist:
+            return Response({'error': 'Parent not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        data = request.data
+
+        logger.debug('ParentDetailView.patch called; request.FILES keys: %s', list(getattr(request, 'FILES', {}).keys()))
+
+        # Accept both JSON and multipart form-data. Update known fields only.
+        updated = False
+        # Handle password change explicitly: require current_password match
+        if isinstance(data, dict) and 'password' in data:
+            new_pw = data.get('password')
+            current_pw = data.get('current_password')
+            if not current_pw:
+                return Response({'error': 'current_password is required to change password.'}, status=status.HTTP_400_BAD_REQUEST)
+            # simple plain-text compare (project currently stores plain passwords)
+            if (parent.password or '') != str(current_pw):
+                return Response({'error': 'Current password is incorrect.'}, status=status.HTTP_401_UNAUTHORIZED)
+            parent.password = str(new_pw)
+            updated = True
+        for field in ('name', 'username', 'contact_number', 'address', 'email'):
+            if field in data:
+                setattr(parent, field, data.get(field))
+                updated = True
+
+        # handle avatar upload from multipart/form-data
+        if getattr(request, 'FILES', None) and 'avatar' in request.FILES:
+            uploaded = request.FILES['avatar']
+            logger.debug('Saving uploaded avatar file: %s (size=%s)', uploaded.name, getattr(uploaded, 'size', 'unknown'))
+            print(f"[ParentDetailView] received avatar file: {uploaded.name}, size={getattr(uploaded, 'size', 'unknown')}")
+            parent.avatar = uploaded
+            updated = True
+
+        if updated:
+            parent.save()
+            # debug after save
+            try:
+                avatar_name = parent.avatar.name
+                avatar_path = getattr(parent.avatar, 'path', None)
+            except Exception:
+                avatar_name = None
+                avatar_path = None
+            logger.debug('Parent saved. avatar.name=%s avatar.path=%s', avatar_name, avatar_path)
+            print(f"[ParentDetailView] parent.save() completed. avatar.name={avatar_name} avatar.path={avatar_path}")
+        serializer = ParentGuardianSerializer(parent, context={'request': request})
+        debug_info = {'updated': updated, 'avatar_name': avatar_name if updated else None, 'avatar_path': avatar_path if updated else None}
+        # Return serializer data at top-level (keeps previous client expectations) and include debug info
+        response_data = dict(serializer.data)
+        response_data['debug'] = debug_info
+        return Response(response_data)
+
+# new
+class ParentNotificationListCreateView(APIView):
+    """
+    Read/create notifications tied to ParentGuardian records.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        parent_id = request.query_params.get('parent')
+        lrn = request.query_params.get('lrn')
+        limit = request.query_params.get('limit')
+
+        queryset = ParentNotification.objects.select_related('parent', 'student').order_by('-created_at')
+        if parent_id:
+            queryset = queryset.filter(parent_id=parent_id)
+        if lrn:
+            queryset = queryset.filter(student__lrn=lrn)
+        if limit:
+            try:
+                limit_value = max(1, min(int(limit), 200))
+                queryset = queryset[:limit_value]
+            except (TypeError, ValueError):
+                logger.warning("Invalid limit param for notifications: %s", limit)
+
+        serializer = ParentNotificationSerializer(queryset, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        serializer = ParentNotificationSerializer(data=request.data)
+        if serializer.is_valid():
+            notification = serializer.save()
+            output = ParentNotificationSerializer(notification).data
+            return Response(output, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+# new
+class ParentEventListCreateView(APIView):
+    """
+    Read/create events tied to ParentGuardian records.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        parent_id = request.query_params.get('parent')
+        lrn = request.query_params.get('lrn')
+        limit = request.query_params.get('limit')
+        upcoming = request.query_params.get('upcoming')
+
+        logger.debug(
+            "ParentEventListCreateView.get called parent=%s lrn=%s limit=%s upcoming=%s",
+            parent_id,
+            lrn,
+            limit,
+            upcoming,
+        )
+
+        queryset = ParentEvent.objects.select_related('parent', 'student').order_by('-scheduled_at', '-created_at')
+        if parent_id:
+            queryset = queryset.filter(parent_id=parent_id)
+        if lrn:
+            queryset = queryset.filter(student__lrn=lrn)
+        if upcoming and str(upcoming).lower() in ('1', 'true', 'yes'):
+            now = timezone.now()
+            queryset = queryset.filter(
+                Q(scheduled_at__gte=now) | Q(scheduled_at__isnull=True)
+            )
+        if limit:
+            try:
+                limit_value = max(1, min(int(limit), 200))
+                queryset = queryset[:limit_value]
+            except (TypeError, ValueError):
+                logger.warning("Invalid limit param for events: %s", limit)
+
+        serializer = ParentEventSerializer(queryset, many=True)
+        logger.debug(
+            "ParentEventListCreateView returning %s events",
+            len(serializer.data)
+        )
+        return Response(serializer.data)
+
+    def post(self, request):
+        serializer = ParentEventSerializer(data=request.data)
+        if serializer.is_valid():
+            event = serializer.save()
+            output = ParentEventSerializer(event).data
+            return Response(output, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ParentScheduleListCreateView(APIView):
+    """
+    Read/create student schedule entries.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        parent_id = request.query_params.get('parent')
+        student_id = request.query_params.get('student')
+        lrn = request.query_params.get('lrn')
+        teacher_id = request.query_params.get('teacher')
+        day = request.query_params.get('day')
+        upcoming = request.query_params.get('upcoming')
+        limit = request.query_params.get('limit')
+
+        queryset = ParentSchedule.objects.select_related('parent', 'student', 'teacher').order_by(
+            'day_of_week', 'start_time', 'subject', 'created_at'
+        )
+
+        if parent_id:
+            queryset = queryset.filter(parent_id=parent_id)
+        if student_id:
+            queryset = queryset.filter(student__pk=student_id)
+        if lrn:
+            queryset = queryset.filter(student__lrn=lrn)
+        if teacher_id:
+            queryset = queryset.filter(teacher_id=teacher_id)
+        if day:
+            queryset = queryset.filter(day_of_week__iexact=str(day).lower())
+        if upcoming and str(upcoming).lower() in ('1', 'true', 'yes'):
+            now = timezone.localtime()
+            today_day = now.strftime('%A').lower()
+            current_time = now.time()
+            queryset = queryset.filter(
+                Q(day_of_week__iexact=today_day, start_time__gte=current_time)
+                | Q(day_of_week__iexact=today_day, start_time__isnull=True)
+                | Q(day_of_week__isnull=True)
+                | Q(day_of_week='')
+            )
+        if limit:
+            try:
+                limit_value = max(1, min(int(limit), 500))
+                queryset = queryset[:limit_value]
+            except (TypeError, ValueError):
+                logger.warning("Invalid limit param for schedules: %s", limit)
+
+        serializer = ParentScheduleSerializer(queryset, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        serializer = ParentScheduleSerializer(data=request.data)
+        if serializer.is_valid():
+            schedule = serializer.save()
+            output = ParentScheduleSerializer(schedule).data
+            return Response(output, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
