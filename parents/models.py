@@ -48,7 +48,7 @@ class ParentGuardian(models.Model):
         related_name='parents_guardians'
     )
     name = models.CharField(max_length=100)
-    #new
+    
     username = models.CharField(max_length=100, blank=True, null=True)
     password = models.CharField(max_length=100, blank=True, null=True)
     
@@ -105,7 +105,7 @@ class MobileRegistration(models.Model):
         return f"{self.phone_number} - {'Verified' if self.is_verified else 'Unverified'}"
 
 
-#new
+
 class ParentNotification(models.Model):
     NOTIFICATION_TYPES = [
         ('attendance', 'Attendance'),
@@ -139,7 +139,7 @@ class ParentNotification(models.Model):
         return f"Notification to {parent_name}: {self.type}"
 
 
-# new
+
 class ParentEvent(models.Model):
     EVENT_TYPES = [
         ('school', 'School'),
@@ -225,5 +225,6 @@ class ParentSchedule(models.Model):
     def __str__(self):
         student_name = self.student.name if self.student_id else 'Unknown student'
         return f"{self.subject} - {student_name}"
+
 
 
