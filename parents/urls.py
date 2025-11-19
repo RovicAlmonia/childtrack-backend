@@ -11,7 +11,7 @@ from .views import (
     ParentMobileLoginView,
     ParentsByLRNView,
 
-    #new
+
     ParentLoginView,
     ParentDetailView,
     ParentNotificationListCreateView,
@@ -34,7 +34,7 @@ urlpatterns = [
     path('mobile/login/', ParentMobileLoginView.as_view(), name='mobile-login'),
     path('by-lrn/<str:lrn>/', ParentsByLRNView.as_view(), name='parents-by-lrn'),
 
-    #new
+    
     path('login/', ParentLoginView.as_view(), name='parent-login'),
     path('parents/<int:pk>/', ParentDetailView.as_view(), name='parent-detail'),
     path('notifications/', ParentNotificationListCreateView.as_view(), name='parent-notifications'),
