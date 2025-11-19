@@ -34,14 +34,14 @@ class StudentAdmin(admin.ModelAdmin):
 
 @admin.register(ParentGuardian)
 class ParentGuardianAdmin(admin.ModelAdmin):
-    list_display = ['name', 'role', 'student', 'teacher', 'contact_number', 'created_at']
-    search_fields = ['name', 'student__name', 'student__lrn', 'teacher__user__username']
+    list_display = ['username', 'name', 'role', 'student', 'teacher', 'contact_number', 'created_at']
+    search_fields = ['username', 'name', 'student__name', 'student__lrn', 'teacher__user__username']
     list_filter = ['role', 'teacher', 'created_at']
     readonly_fields = ['created_at', 'updated_at', 'qr_code_data']
     
     fieldsets = (
         ('Personal Information', {
-            'fields': ('name', 'role', 'contact_number', 'email', 'address')
+            'fields': ('username', 'name', 'password', 'role', 'contact_number', 'email', 'address')
         }),
         ('Relationships', {
             'fields': ('student', 'teacher')
@@ -165,6 +165,7 @@ class ParentScheduleAdmin(admin.ModelAdmin):
         ('Extra', {'fields': ('extra_data',)}),
         ('System', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
     )
+
 
 
 
