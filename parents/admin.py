@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Student, ParentGuardian, ParentMobileAccount,  MobileRegistration,  ParentNotification, ParentEvent, ParentSchedule
+from .models import Student, ParentGuardian, ParentMobileAccount, MobileRegistration, ParentNotification, ParentEvent, ParentSchedule
 
 @admin.register(Student)
 class StudentAdmin(admin.ModelAdmin):
@@ -41,7 +41,7 @@ class ParentGuardianAdmin(admin.ModelAdmin):
     
     fieldsets = (
         ('Personal Information', {
-            'fields': ('username', 'name', 'password', 'role', 'contact_number', 'email', 'address')
+            'fields': ('username', 'name', 'password', 'role', 'contact_number', 'email', 'address', 'avatar')
         }),
         ('Relationships', {
             'fields': ('student', 'teacher')
@@ -102,7 +102,8 @@ class ParentNotificationAdmin(admin.ModelAdmin):
     list_filter = ['type', 'created_at']
     search_fields = ['parent__name', 'parent__username', 'student__name', 'student__lrn', 'message']
     readonly_fields = ['created_at']
-    autocomplete_fields = ['parent', 'student']
+    # REMOVED autocomplete_fields - using raw_id_fields instead
+    raw_id_fields = ['parent', 'student']
 
     fieldsets = (
         ('Notification Target', {
@@ -128,7 +129,8 @@ class ParentEventAdmin(admin.ModelAdmin):
     list_filter = ['event_type', 'scheduled_at', 'created_at']
     search_fields = ['parent__name', 'parent__username', 'student__name', 'title', 'description']
     readonly_fields = ['created_at', 'updated_at']
-    autocomplete_fields = ['parent', 'student']
+    # REMOVED autocomplete_fields - using raw_id_fields instead
+    raw_id_fields = ['parent', 'student']
 
     fieldsets = (
         ('Event Target', {'fields': ('parent', 'student')}),
@@ -144,7 +146,8 @@ class ParentScheduleAdmin(admin.ModelAdmin):
     list_filter = ['day_of_week', 'teacher', 'created_at']
     search_fields = ['student__name', 'student__lrn', 'subject', 'room']
     readonly_fields = ['created_at', 'updated_at']
-    autocomplete_fields = ['parent', 'student', 'teacher']
+    # REMOVED autocomplete_fields - using raw_id_fields instead
+    raw_id_fields = ['parent', 'student', 'teacher']
 
     fieldsets = (
         ('Associations', {'fields': ('student', 'parent', 'teacher')}),
@@ -165,7 +168,3 @@ class ParentScheduleAdmin(admin.ModelAdmin):
         ('Extra', {'fields': ('extra_data',)}),
         ('System', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
     )
-
-
-
-
