@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Student, ParentGuardian, ParentMobileAccount,  MobileRegistration
+from .models import Student, ParentGuardian, ParentMobileAccount,  MobileRegistration,  ParentNotification, ParentEvent, ParentSchedule
 
 @admin.register(Student)
 class StudentAdmin(admin.ModelAdmin):
@@ -94,3 +94,76 @@ class MobileRegistrationAdmin(admin.ModelAdmin):
     date_hierarchy = 'created_at'
     ordering = ['-created_at']
     readonly_fields = ['created_at', 'updated_at']
+
+#new
+@admin.register(ParentNotification)
+class ParentNotificationAdmin(admin.ModelAdmin):
+    list_display = ['id', 'parent', 'student', 'type', 'message_preview', 'created_at']
+    list_filter = ['type', 'created_at']
+    search_fields = ['parent__name', 'parent__username', 'student__name', 'student__lrn', 'message']
+    readonly_fields = ['created_at']
+    autocomplete_fields = ['parent', 'student']
+
+    fieldsets = (
+        ('Notification Target', {
+            'fields': ('parent', 'student')
+        }),
+        ('Content', {
+            'fields': ('type', 'message', 'extra_data')
+        }),
+        ('System', {
+            'fields': ('created_at',),
+            'classes': ('collapse',)
+        })
+    )
+
+    def message_preview(self, obj):
+        return (obj.message[:50] + '...') if obj.message and len(obj.message) > 50 else obj.message
+    message_preview.short_description = 'Message'
+
+# new
+@admin.register(ParentEvent)
+class ParentEventAdmin(admin.ModelAdmin):
+    list_display = ['id', 'parent', 'title', 'event_type', 'scheduled_at', 'created_at']
+    list_filter = ['event_type', 'scheduled_at', 'created_at']
+    search_fields = ['parent__name', 'parent__username', 'student__name', 'title', 'description']
+    readonly_fields = ['created_at', 'updated_at']
+    autocomplete_fields = ['parent', 'student']
+
+    fieldsets = (
+        ('Event Target', {'fields': ('parent', 'student')}),
+        ('Details', {'fields': ('title', 'description', 'event_type', 'scheduled_at', 'location')}),
+        ('Extra', {'fields': ('extra_data',)}),
+        ('System', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
+    )
+
+
+@admin.register(ParentSchedule)
+class ParentScheduleAdmin(admin.ModelAdmin):
+    list_display = ['id', 'student', 'subject', 'day_of_week', 'time_label', 'room', 'created_at']
+    list_filter = ['day_of_week', 'teacher', 'created_at']
+    search_fields = ['student__name', 'student__lrn', 'subject', 'room']
+    readonly_fields = ['created_at', 'updated_at']
+    autocomplete_fields = ['parent', 'student', 'teacher']
+
+    fieldsets = (
+        ('Associations', {'fields': ('student', 'parent', 'teacher')}),
+        (
+            'Schedule Details',
+            {
+                'fields': (
+                    'subject',
+                    'description',
+                    'day_of_week',
+                    ('start_time', 'end_time'),
+                    'time_label',
+                    'room',
+                    'icon',
+                )
+            },
+        ),
+        ('Extra', {'fields': ('extra_data',)}),
+        ('System', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
+    )
+
+
