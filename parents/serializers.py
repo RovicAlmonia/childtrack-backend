@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Student, ParentGuardian, ParentMobileAccount
+from .models import Student, ParentGuardian, ParentMobileAccount, ParentNotification, ParentEvent, ParentSchedule
 from teacher.models import TeacherProfile
 
 
@@ -146,6 +146,9 @@ class RegistrationSerializer(serializers.Serializer):
     parent1_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
     parent1_contact = serializers.CharField(max_length=15, required=False, allow_blank=True)
     parent1_email = serializers.EmailField(required=False, allow_blank=True)
+    #new
+    parent1_username = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    parent1_password = serializers.CharField(max_length=100, required=False, allow_blank=True)
 
     parent2_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
     parent2_contact = serializers.CharField(max_length=15, required=False, allow_blank=True)
@@ -194,3 +197,149 @@ class TeacherStudentsSerializer(serializers.ModelSerializer):
 
     def get_total_parents_guardians(self, obj):
         return obj.parents_guardians.count()
+
+
+ new
+class ParentNotificationSerializer(serializers.ModelSerializer):
+    parent_name = serializers.CharField(source='parent.name', read_only=True)
+    student_name = serializers.CharField(source='student.name', read_only=True)
+    student_lrn = serializers.CharField(source='student.lrn', read_only=True)
+
+    class Meta:
+        model = ParentNotification
+        fields = [
+            'id',
+            'parent',
+            'parent_name',
+            'student',
+            'student_name',
+            'student_lrn',
+            'type',
+            'message',
+            'extra_data',
+            'created_at',
+        ]
+        read_only_fields = ['created_at']
+
+    def create(self, validated_data):
+        if not validated_data.get('student'):
+            validated_data['student'] = validated_data['parent'].student
+        return super().create(validated_data)
+
+# new
+class ParentEventSerializer(serializers.ModelSerializer):
+    parent_name = serializers.CharField(source='parent.name', read_only=True)
+    student_name = serializers.CharField(source='student.name', read_only=True)
+    student_lrn = serializers.CharField(source='student.lrn', read_only=True)
+
+    class Meta:
+        model = ParentEvent
+        fields = [
+            'id',
+            'parent',
+            'parent_name',
+            'student',
+            'student_name',
+            'student_lrn',
+            'title',
+            'description',
+            'event_type',
+            'scheduled_at',
+            'location',
+            'extra_data',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def create(self, validated_data):
+        if not validated_data.get('student'):
+            validated_data['student'] = validated_data['parent'].student
+        return super().create(validated_data)
+
+
+class ParentScheduleSerializer(serializers.ModelSerializer):
+    parent_name = serializers.CharField(source='parent.name', read_only=True)
+    student_name = serializers.CharField(source='student.name', read_only=True)
+    student_lrn = serializers.CharField(source='student.lrn', read_only=True)
+    teacher_name = serializers.CharField(source='teacher.user.username', read_only=True, default=None)
+
+    class Meta:
+        model = ParentSchedule
+        fields = [
+            'id',
+            'parent',
+            'parent_name',
+            'student',
+            'student_name',
+            'student_lrn',
+            'teacher',
+            'teacher_name',
+            'subject',
+            'description',
+            'day_of_week',
+            'start_time',
+            'end_time',
+            'time_label',
+            'room',
+            'icon',
+            'extra_data',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate(self, data):
+        parent = data.get('parent')
+        student = data.get('student')
+        if not parent and not student:
+            raise serializers.ValidationError("Either parent or student must be provided.")
+        if parent and student and parent.student != student:
+            raise serializers.ValidationError("Provided student does not match the parent's student.")
+        return data
+
+    def create(self, validated_data):
+        validated_data = self._attach_relationship_defaults(validated_data)
+        validated_data = self._ensure_time_label(validated_data)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        validated_data = self._attach_relationship_defaults(validated_data, fallback_instance=instance)
+        validated_data = self._ensure_time_label(validated_data, fallback_instance=instance)
+        return super().update(instance, validated_data)
+
+    def _attach_relationship_defaults(self, data, fallback_instance=None):
+        parent = data.get('parent') or getattr(fallback_instance, 'parent', None)
+        if parent:
+            if not data.get('student'):
+                data['student'] = parent.student
+            if not data.get('teacher'):
+                data['teacher'] = parent.teacher
+        return data
+
+    def _ensure_time_label(self, data, fallback_instance=None):
+        if data.get('time_label'):
+            return data
+        start = data.get('start_time')
+        end = data.get('end_time')
+        if not start and not end and fallback_instance:
+            start = getattr(fallback_instance, 'start_time', None)
+            end = getattr(fallback_instance, 'end_time', None)
+        label = self._build_time_label(start, end)
+        if label:
+            data['time_label'] = label
+        return data
+
+    def _build_time_label(self, start, end):
+        def _fmt(value):
+            if not value:
+                return None
+            return value.strftime("%I:%M %p").lstrip('0')
+
+        start_str = _fmt(start)
+        end_str = _fmt(end)
+        if start_str and end_str:
+            return f"{start_str} - {end_str}"
+        return start_str or end_str
+
+
