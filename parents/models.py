@@ -48,6 +48,10 @@ class ParentGuardian(models.Model):
         related_name='parents_guardians'
     )
     name = models.CharField(max_length=100)
+    #new
+    username = models.CharField(max_length=100, blank=True, null=True)
+    password = models.CharField(max_length=100, blank=True, null=True)
+    
     role = models.CharField(max_length=20, choices=ROLE_CHOICES)
     contact_number = models.CharField(max_length=15, blank=True, null=True)
     email = models.EmailField(blank=True, null=True)
@@ -99,3 +103,127 @@ class MobileRegistration(models.Model):
         
     def __str__(self):
         return f"{self.phone_number} - {'Verified' if self.is_verified else 'Unverified'}"
+
+
+#new
+class ParentNotification(models.Model):
+    NOTIFICATION_TYPES = [
+        ('attendance', 'Attendance'),
+        ('pickup', 'Pickup'),
+        ('event', 'Event'),
+        ('other', 'Other'),
+    ]
+
+    parent = models.ForeignKey(
+        ParentGuardian,
+        on_delete=models.CASCADE,
+        related_name='notifications'
+    )
+    student = models.ForeignKey(
+        Student,
+        on_delete=models.CASCADE,
+        related_name='notifications',
+        blank=True,
+        null=True
+    )
+    type = models.CharField(max_length=32, choices=NOTIFICATION_TYPES, default='other')
+    message = models.TextField()
+    extra_data = models.JSONField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        parent_name = self.parent.name if self.parent_id else 'Unknown'
+        return f"Notification to {parent_name}: {self.type}"
+
+
+# new
+class ParentEvent(models.Model):
+    EVENT_TYPES = [
+        ('school', 'School'),
+        ('meeting', 'Meeting'),
+        ('reminder', 'Reminder'),
+        ('other', 'Other'),
+    ]
+
+    parent = models.ForeignKey(
+        ParentGuardian,
+        on_delete=models.CASCADE,
+        related_name='events'
+    )
+    student = models.ForeignKey(
+        Student,
+        on_delete=models.CASCADE,
+        related_name='events',
+        blank=True,
+        null=True
+    )
+    title = models.CharField(max_length=150)
+    description = models.TextField(blank=True)
+    event_type = models.CharField(max_length=32, choices=EVENT_TYPES, default='other')
+    scheduled_at = models.DateTimeField(blank=True, null=True)
+    location = models.CharField(max_length=150, blank=True)
+    extra_data = models.JSONField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-scheduled_at', '-created_at']
+
+    def __str__(self):
+        parent_name = self.parent.name if self.parent_id else 'Unknown'
+        return f"Event for {parent_name}: {self.title}"
+
+
+class ParentSchedule(models.Model):
+    DAYS_OF_WEEK = [
+        ('monday', 'Monday'),
+        ('tuesday', 'Tuesday'),
+        ('wednesday', 'Wednesday'),
+        ('thursday', 'Thursday'),
+        ('friday', 'Friday'),
+        ('saturday', 'Saturday'),
+        ('sunday', 'Sunday'),
+    ]
+
+    parent = models.ForeignKey(
+        ParentGuardian,
+        on_delete=models.CASCADE,
+        related_name='schedules',
+        blank=True,
+        null=True,
+    )
+    student = models.ForeignKey(
+        Student,
+        on_delete=models.CASCADE,
+        related_name='schedules',
+    )
+    teacher = models.ForeignKey(
+        TeacherProfile,
+        on_delete=models.CASCADE,
+        related_name='schedules',
+        blank=True,
+        null=True,
+    )
+    subject = models.CharField(max_length=150)
+    description = models.TextField(blank=True)
+    day_of_week = models.CharField(max_length=9, choices=DAYS_OF_WEEK, blank=True)
+    start_time = models.TimeField(blank=True, null=True)
+    end_time = models.TimeField(blank=True, null=True)
+    time_label = models.CharField(max_length=120, blank=True)
+    room = models.CharField(max_length=50, blank=True)
+    icon = models.CharField(max_length=64, blank=True, default='book-outline')
+    extra_data = models.JSONField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['student', 'day_of_week', 'start_time', 'subject', 'created_at']
+
+    def __str__(self):
+        student_name = self.student.name if self.student_id else 'Unknown student'
+        return f"{self.subject} - {student_name}"
+
+
