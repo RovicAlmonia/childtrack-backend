@@ -199,7 +199,6 @@ class TeacherStudentsSerializer(serializers.ModelSerializer):
         return obj.parents_guardians.count()
 
 
- new
 class ParentNotificationSerializer(serializers.ModelSerializer):
     parent_name = serializers.CharField(source='parent.name', read_only=True)
     student_name = serializers.CharField(source='student.name', read_only=True)
@@ -226,7 +225,7 @@ class ParentNotificationSerializer(serializers.ModelSerializer):
             validated_data['student'] = validated_data['parent'].student
         return super().create(validated_data)
 
-# new
+
 class ParentEventSerializer(serializers.ModelSerializer):
     parent_name = serializers.CharField(source='parent.name', read_only=True)
     student_name = serializers.CharField(source='student.name', read_only=True)
