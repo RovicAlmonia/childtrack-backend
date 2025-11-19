@@ -13,8 +13,7 @@ from rest_framework.authtoken.models import Token
 from django.utils import timezone
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
-from .models import Student, ParentGuardian, ParentMobileAccount, #new 
-ParentNotification, ParentEvent, ParentSchedule
+from .models import Student, ParentGuardian, ParentMobileAccount, ParentNotification, ParentEvent, ParentSchedule
 
 from teacher.models import TeacherProfile
 from .serializers import (
@@ -699,3 +698,4 @@ class ParentScheduleListCreateView(APIView):
             output = ParentScheduleSerializer(schedule).data
             return Response(output, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
