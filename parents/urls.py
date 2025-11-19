@@ -17,6 +17,7 @@ from .views import (
     ParentNotificationListCreateView,
     ParentEventListCreateView,
     ParentScheduleListCreateView,
+    ParentGuardianPublicListView,
 
 )
 
