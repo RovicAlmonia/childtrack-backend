@@ -613,37 +613,34 @@ class ParentNotificationListCreateView(APIView):
             return Response(output, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-
 class ParentEventListCreateView(APIView):
     """
-    Read/create events tied to ParentGuardian records.
+    Read/create events tied to a Teacher (visible to all parents under that teacher).
     """
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        try:
+            teacher = TeacherProfile.objects.get(user=request.user)
+        except TeacherProfile.DoesNotExist:
+            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Get all events for this teacher
+        queryset = ParentEvent.objects.filter(teacher=teacher).select_related('teacher', 'parent', 'student').order_by('-scheduled_at', '-created_at')
+        
+        # Optional filters
         parent_id = request.query_params.get('parent')
         lrn = request.query_params.get('lrn')
-        limit = request.query_params.get('limit')
         upcoming = request.query_params.get('upcoming')
+        limit = request.query_params.get('limit')
 
-        logger.debug(
-            "ParentEventListCreateView.get called parent=%s lrn=%s limit=%s upcoming=%s",
-            parent_id,
-            lrn,
-            limit,
-            upcoming,
-        )
-
-        queryset = ParentEvent.objects.select_related('parent', 'student').order_by('-scheduled_at', '-created_at')
         if parent_id:
-            queryset = queryset.filter(parent_id=parent_id)
+            queryset = queryset.filter(Q(parent_id=parent_id) | Q(parent__isnull=True))
         if lrn:
-            queryset = queryset.filter(student__lrn=lrn)
+            queryset = queryset.filter(Q(student__lrn=lrn) | Q(student__isnull=True))
         if upcoming and str(upcoming).lower() in ('1', 'true', 'yes'):
             now = timezone.now()
-            queryset = queryset.filter(
-                Q(scheduled_at__gte=now) | Q(scheduled_at__isnull=True)
-            )
+            queryset = queryset.filter(scheduled_at__gte=now)
         if limit:
             try:
                 limit_value = max(1, min(int(limit), 200))
@@ -652,20 +649,21 @@ class ParentEventListCreateView(APIView):
                 logger.warning("Invalid limit param for events: %s", limit)
 
         serializer = ParentEventSerializer(queryset, many=True)
-        logger.debug(
-            "ParentEventListCreateView returning %s events",
-            len(serializer.data)
-        )
         return Response(serializer.data)
 
     def post(self, request):
+        try:
+            teacher = TeacherProfile.objects.get(user=request.user)
+        except TeacherProfile.DoesNotExist:
+            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
+
         serializer = ParentEventSerializer(data=request.data)
         if serializer.is_valid():
-            event = serializer.save()
+            # Automatically set the teacher
+            event = serializer.save(teacher=teacher)
             output = ParentEventSerializer(event).data
             return Response(output, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 
 class ParentScheduleListCreateView(APIView):
     """
@@ -723,3 +721,4 @@ class ParentScheduleListCreateView(APIView):
             output = ParentScheduleSerializer(schedule).data
             return Response(output, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
