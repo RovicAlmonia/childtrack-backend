@@ -235,6 +235,7 @@ class ParentNotificationSerializer(serializers.ModelSerializer):
             validated_data['student'] = validated_data['parent'].student
         return super().create(validated_data)
 
+
 class ParentEventSerializer(serializers.ModelSerializer):
     teacher_name = serializers.CharField(source='teacher.user.username', read_only=True)
     parent_name = serializers.CharField(source='parent.name', read_only=True, allow_null=True)
