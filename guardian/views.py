@@ -16,7 +16,7 @@ class GuardianView(APIView):
     def get(self, request, pk=None):
         """Get all guardians for the authenticated teacher or by teacher ID"""
         try:
-            # If pk is provided, get guardians for that specific teacher
+      
             if pk:
                 try:
                     teacher_profile = TeacherProfile.objects.get(id=pk)
