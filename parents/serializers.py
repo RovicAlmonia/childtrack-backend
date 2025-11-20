@@ -235,16 +235,18 @@ class ParentNotificationSerializer(serializers.ModelSerializer):
             validated_data['student'] = validated_data['parent'].student
         return super().create(validated_data)
 
-
 class ParentEventSerializer(serializers.ModelSerializer):
-    parent_name = serializers.CharField(source='parent.name', read_only=True)
-    student_name = serializers.CharField(source='student.name', read_only=True)
-    student_lrn = serializers.CharField(source='student.lrn', read_only=True)
+    teacher_name = serializers.CharField(source='teacher.user.username', read_only=True)
+    parent_name = serializers.CharField(source='parent.name', read_only=True, allow_null=True)
+    student_name = serializers.CharField(source='student.name', read_only=True, allow_null=True)
+    student_lrn = serializers.CharField(source='student.lrn', read_only=True, allow_null=True)
 
     class Meta:
         model = ParentEvent
         fields = [
             'id',
+            'teacher',
+            'teacher_name',
             'parent',
             'parent_name',
             'student',
@@ -259,12 +261,11 @@ class ParentEventSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         ]
-        read_only_fields = ['created_at', 'updated_at']
-
-    def create(self, validated_data):
-        if not validated_data.get('student'):
-            validated_data['student'] = validated_data['parent'].student
-        return super().create(validated_data)
+        read_only_fields = ['created_at', 'updated_at', 'teacher']
+        extra_kwargs = {
+            'parent': {'required': False, 'allow_null': True},
+            'student': {'required': False, 'allow_null': True}
+        }
 
 
 class ParentScheduleSerializer(serializers.ModelSerializer):
