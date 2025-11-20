@@ -1,5 +1,6 @@
 from django.urls import path
 from .views import (
+    RegistrationView,
     AuthenticatedStudentRegistrationView,
     PublicStudentRegistrationView,
     TeacherStudentsView,
@@ -10,36 +11,46 @@ from .views import (
     ParentMobileRegistrationView,
     ParentMobileLoginView,
     ParentsByLRNView,
-
-
+    ParentGuardianPublicListView,
     ParentLoginView,
     ParentDetailView,
     ParentNotificationListCreateView,
     ParentEventListCreateView,
+    ParentEventDetailView,
     ParentScheduleListCreateView,
-    ParentGuardianPublicListView,
-
 )
 
 urlpatterns = [
-    path('register/', AuthenticatedStudentRegistrationView.as_view(), name='register'),
+    # Student Registration
+    path('register/', AuthenticatedStudentRegistrationView.as_view(), name='authenticated-register'),
     path('public/register/', PublicStudentRegistrationView.as_view(), name='public-register'),
+    
+    # Teacher & Student Management
     path('teacher-students/', TeacherStudentsView.as_view(), name='teacher-students'),
-    path('students/', StudentListView.as_view(), name='students-list'),
-    path('parents/', ParentGuardianListView.as_view(), name='parents-list'),
+    path('students/', StudentListView.as_view(), name='student-list'),
     path('students/<str:lrn>/', StudentDetailView.as_view(), name='student-detail'),
     path('all-teachers-students/', AllTeachersStudentsView.as_view(), name='all-teachers-students'),
     
-    # Mobile app endpoints
+    # Parent/Guardian Management
+    path('parents/', ParentGuardianListView.as_view(), name='parent-list'),
+    path('parents/public/', ParentGuardianPublicListView.as_view(), name='parent-public-list'),
+    path('parent/<int:pk>/', ParentDetailView.as_view(), name='parent-detail'),
+    path('by-lrn/<str:lrn>/', ParentsByLRNView.as_view(), name='parents-by-lrn'),
+    
+    # Parent Login (Web)
+    path('login/', ParentLoginView.as_view(), name='parent-login'),
+    
+    # Parent Mobile App
     path('mobile/register/', ParentMobileRegistrationView.as_view(), name='mobile-register'),
     path('mobile/login/', ParentMobileLoginView.as_view(), name='mobile-login'),
-    path('by-lrn/<str:lrn>/', ParentsByLRNView.as_view(), name='parents-by-lrn'),
-
     
-    path('login/', ParentLoginView.as_view(), name='parent-login'),
-    path('parents/<int:pk>/', ParentDetailView.as_view(), name='parent-detail'),
-    path('notifications/', ParentNotificationListCreateView.as_view(), name='parent-notifications'),
-    path('events/', ParentEventListCreateView.as_view(), name='parent-events'),
-    path('schedules/', ParentScheduleListCreateView.as_view(), name='parent-schedules'),
-    path('parents/public/', ParentGuardianPublicListView.as_view(), name='parents-public-list'),
+    # Notifications
+    path('notifications/', ParentNotificationListCreateView.as_view(), name='notification-list-create'),
+    
+    # Announcements/Events
+    path('events/', ParentEventListCreateView.as_view(), name='event-list-create'),
+    path('events/<int:pk>/', ParentEventDetailView.as_view(), name='event-detail'),
+    
+    # Schedules
+    path('schedules/', ParentScheduleListCreateView.as_view(), name='schedule-list-create'),
 ]
