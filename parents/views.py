@@ -725,76 +725,164 @@ class ParentEventListCreateView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class ParentEventDetailView(APIView):
+class ParentEventListCreateView(APIView):
     """
-    Retrieve, update, or delete a specific event/announcement
-    Endpoint: /api/parents/events/{id}/
+    Announcements API for teachers to create and parents/mobile app to fetch.
+    
+    Teachers POST: Create announcements visible to all their students' parents
+    Parents/Mobile GET: Fetch announcements from their student's teacher
+    Endpoint: /api/parents/events/
     """
-    permission_classes = [permissions.AllowAny]
+    
+    def get_permissions(self):
+        """GET requests: allow unauthenticated (for mobile app flexibility)
+           POST requests: require authenticated teacher only"""
+        if self.request.method == 'GET':
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
 
-    def get(self, request, pk):
-        """Get single announcement"""
+    def get(self, request):
+        """
+        Fetch announcements/events
+        Query params:
+        - teacher_id: Filter by specific teacher
+        - lrn: Filter by student LRN (parents only)
+        - parent_id: Filter by parent (parents only)
+        - upcoming: Show only future events (1/true/yes)
+        - limit: Max number of results (default 200)
+        """
+        queryset = ParentEvent.objects.select_related(
+            'teacher', 'parent', 'student'
+        ).order_by('-scheduled_at', '-created_at')
+
+        # Debug: log incoming query params for troubleshooting mobile clients
         try:
-            event = ParentEvent.objects.select_related('teacher', 'parent', 'student').get(pk=pk)
-        except ParentEvent.DoesNotExist:
-            return Response({"error": "Announcement not found"}, status=status.HTTP_404_NOT_FOUND)
+            logger.info('ParentEventListCreateView GET called with params: %s', dict(request.query_params))
+        except Exception:
+            logger.info('ParentEventListCreateView GET called')
 
-        serializer = ParentEventSerializer(event)
+        # If authenticated user is a parent, automatically filter to their teacher
+        user = request.user
+        if user and user.is_authenticated:
+            try:
+                parent = ParentGuardian.objects.get(user=user)
+                # Parent only sees announcements from their student's teacher
+                queryset = queryset.filter(teacher=parent.teacher)
+                logger.info(f"Parent {parent.id} viewing events from teacher {parent.teacher.id}")
+            except ParentGuardian.DoesNotExist:
+                # If not a parent, don't auto-filter (teachers can see all)
+                logger.info(f"User {user.id} authenticated but not a parent - showing all events")
+                pass
+
+        # Optional filters
+        teacher_id = request.query_params.get('teacher_id')
+        parent_id = request.query_params.get('parent')
+        lrn = request.query_params.get('lrn')
+        section = request.query_params.get('section')
+        upcoming = request.query_params.get('upcoming')
+        limit = request.query_params.get('limit')
+
+        if teacher_id:
+            queryset = queryset.filter(teacher_id=teacher_id)
+        # Filter by section: include events explicitly targeted to the section,
+        # events attached to a student in that section, or broadcast events
+        # (section is null) when appropriate.
+        if section:
+            queryset = queryset.filter(
+                Q(section__isnull=True) | Q(section__iexact=section) | Q(student__section__iexact=section)
+            )
+        
+        if parent_id:
+            queryset = queryset.filter(Q(parent_id=parent_id) | Q(parent__isnull=True))
+        
+        if lrn:
+            queryset = queryset.filter(Q(student__lrn=lrn) | Q(student__isnull=True))
+        
+        if upcoming and str(upcoming).lower() in ('1', 'true', 'yes'):
+            now = timezone.now()
+            queryset = queryset.filter(scheduled_at__gte=now)
+        
+        if limit:
+            try:
+                limit_value = max(1, min(int(limit), 500))
+                queryset = queryset[:limit_value]
+            except (TypeError, ValueError):
+                logger.warning("Invalid limit param for events: %s", limit)
+
+        # Log how many events match before serialization (helps debug empty client views)
+        try:
+            matched_count = queryset.count()
+            logger.info('ParentEventListCreateView matched events: %d', matched_count)
+        except Exception:
+            logger.debug('Could not determine matched_count for events')
+
+        serializer = ParentEventSerializer(queryset, many=True)
         return Response(serializer.data)
 
-    def patch(self, request, pk):
-        """Update announcement (teachers only)"""
-        try:
-            event = ParentEvent.objects.get(pk=pk)
-        except ParentEvent.DoesNotExist:
-            return Response({"error": "Announcement not found"}, status=status.HTTP_404_NOT_FOUND)
-
-        # Only the teacher who created it can update
-        try:
-            teacher = TeacherProfile.objects.get(user=request.user)
-            if event.teacher != teacher:
-                return Response(
-                    {"error": "You can only update your own announcements"},
-                    status=status.HTTP_403_FORBIDDEN
-                )
-        except TeacherProfile.DoesNotExist:
-            return Response(
-                {"error": "Only teachers can update announcements"},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        serializer = ParentEventSerializer(event, data=request.data, partial=True)
-        if serializer.is_valid():
-            updated_event = serializer.save()
-            logger.info(f"Teacher {teacher.id} updated announcement: {updated_event.title}")
-            return Response(serializer.data)
+    def post(self, request):
+        """
+        Create announcement (teachers only)
         
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    def delete(self, request, pk):
-        """Delete announcement (teachers only)"""
-        try:
-            event = ParentEvent.objects.get(pk=pk)
-        except ParentEvent.DoesNotExist:
-            return Response({"error": "Announcement not found"}, status=status.HTTP_404_NOT_FOUND)
-
-        # Only the teacher who created it can delete
+        Required fields:
+        - title: Announcement title
+        - description: Announcement content
+        - event_type: Type (e.g. 'Announcement', 'Alert', 'Reminder')
+        - scheduled_at: ISO datetime when to publish
+        
+        Optional:
+        - parent_id: Target specific parent (null = all parents)
+        - student_id: Target specific student (null = all students)
+        - location: Physical location (if applicable)
+        """
         try:
             teacher = TeacherProfile.objects.get(user=request.user)
-            if event.teacher != teacher:
-                return Response(
-                    {"error": "You can only delete your own announcements"},
-                    status=status.HTTP_403_FORBIDDEN
-                )
         except TeacherProfile.DoesNotExist:
             return Response(
-                {"error": "Only teachers can delete announcements"},
+                {"error": "Only teachers can create announcements"},
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        logger.info(f"Teacher {teacher.id} deleted announcement: {event.title}")
-        event.delete()
-        return Response({"message": "Announcement deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
+        serializer = ParentEventSerializer(data=request.data)
+        if serializer.is_valid():
+            # Allow events to target a specific section by providing `section` in payload.
+            section_value = request.data.get('section')
+            event = serializer.save(
+                teacher=teacher,
+                parent=None,
+                section=section_value,
+            )
+
+            logger.info(f"Teacher {teacher.id} created announcement: {event.title} (section={section_value})")
+
+            # Create notifications for parents in the targeted section (if provided).
+            try:
+                if section_value:
+                    # Find parents whose student is in the given section and whose teacher is this teacher
+                    parents_qs = ParentGuardian.objects.filter(student__section__iexact=section_value, teacher=teacher)
+                    notifications = []
+                    for p in parents_qs:
+                        try:
+                            notif = ParentNotification(
+                                parent=p,
+                                student=p.student,
+                                type='event',
+                                message=f"{event.title}: {event.description or ''}",
+                                extra_data=json.dumps({'event_id': event.id})
+                            )
+                            notifications.append(notif)
+                        except Exception:
+                            continue
+                    if notifications:
+                        ParentNotification.objects.bulk_create(notifications)
+
+            except Exception:
+                logger.exception('Failed to create section notifications')
+
+            output = ParentEventSerializer(event).data
+            return Response(output, status=status.HTTP_201_CREATED)
+        
+        logger.warning(f"Announcement creation failed with errors: {serializer.errors}")
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class ParentScheduleListCreateView(APIView):
