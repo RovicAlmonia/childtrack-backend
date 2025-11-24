@@ -34,6 +34,7 @@ class StudentSerializer(serializers.ModelSerializer):
 class ParentGuardianSerializer(serializers.ModelSerializer):
     student_name = serializers.CharField(source='student.name', read_only=True)
     student_lrn = serializers.CharField(source='student.lrn', read_only=True)
+    student_section = serializers.CharField(source='student.section', read_only=True)
     student_gender = serializers.CharField(source='student.gender', read_only=True)
     teacher_name = serializers.CharField(source='teacher.user.username', read_only=True)
     has_mobile_account = serializers.SerializerMethodField()
@@ -48,6 +49,7 @@ class ParentGuardianSerializer(serializers.ModelSerializer):
             'student',
             'student_name',
             'student_lrn',
+            'student_section',
             'student_gender',
             'teacher',
             'teacher_name',
@@ -241,6 +243,7 @@ class ParentEventSerializer(serializers.ModelSerializer):
     parent_name = serializers.CharField(source='parent.name', read_only=True, allow_null=True)
     student_name = serializers.CharField(source='student.name', read_only=True, allow_null=True)
     student_lrn = serializers.CharField(source='student.lrn', read_only=True, allow_null=True)
+    section = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     class Meta:
         model = ParentEvent
@@ -253,6 +256,7 @@ class ParentEventSerializer(serializers.ModelSerializer):
             'student',
             'student_name',
             'student_lrn',
+            'section',
             'title',
             'description',
             'event_type',
