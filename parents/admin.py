@@ -129,12 +129,11 @@ class ParentEventAdmin(admin.ModelAdmin):
     list_filter = ['event_type', 'section', 'scheduled_at', 'created_at']
     search_fields = ['parent__name', 'parent__username', 'student__name', 'student__lrn', 'title', 'description']
     readonly_fields = ['created_at', 'updated_at']
-    # FIXED: Added 'teacher' to raw_id_fields
-    raw_id_fields = ['teacher', 'parent', 'student']  # ← ADD 'teacher' HERE
-
+    # FIXED: Removed 'teacher' since it doesn't exist in the model
+    raw_id_fields = ['parent', 'student']  # ← REMOVE 'teacher'
     fieldsets = (
-        # FIXED: Added 'teacher' to the first fieldset
-        ('Event Target', {'fields': ('teacher', 'parent', 'student', 'section')}),  # ← ADD 'teacher' HERE
+        # FIXED: Removed 'teacher' from fieldsets
+        ('Event Target', {'fields': ('parent', 'student', 'section')}),  # ← REMOVE 'teacher'
         ('Details', {'fields': ('title', 'description', 'event_type', 'scheduled_at', 'location')}),
         ('Extra', {'fields': ('extra_data',)}),
         ('System', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
@@ -168,6 +167,7 @@ class ParentScheduleAdmin(admin.ModelAdmin):
         ('Extra', {'fields': ('extra_data',)}),
         ('System', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
     )
+
 
 
 
