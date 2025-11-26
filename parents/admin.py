@@ -134,7 +134,7 @@ class ParentEventAdmin(admin.ModelAdmin):
     raw_id_fields = ['parent', 'student']
 
     fieldsets = (
-        ('Event Target', {'fields': ('parent', 'student')}),
+        ('Event Target', {'fields': ('parent', 'student', 'section')}),
         ('Details', {'fields': ('title', 'description', 'event_type', 'scheduled_at', 'location')}),
         ('Extra', {'fields': ('extra_data',)}),
         ('System', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
@@ -169,4 +169,5 @@ class ParentScheduleAdmin(admin.ModelAdmin):
         ('Extra', {'fields': ('extra_data',)}),
         ('System', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
     )
+
 
