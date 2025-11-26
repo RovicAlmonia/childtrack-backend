@@ -129,16 +129,17 @@ class ParentEventAdmin(admin.ModelAdmin):
     list_filter = ['event_type', 'section', 'scheduled_at', 'created_at']
     search_fields = ['parent__name', 'parent__username', 'student__name', 'student__lrn', 'title', 'description']
     readonly_fields = ['created_at', 'updated_at']
-    # REMOVED autocomplete_fields - using raw_id_fields instead
-    raw_id_fields = ['parent', 'student']
+    # FIXED: Added 'teacher' to raw_id_fields
+    raw_id_fields = ['teacher', 'parent', 'student']  # ← ADD 'teacher' HERE
 
     fieldsets = (
-        ('Event Target', {'fields': ('parent', 'student', 'section')}),
+        # FIXED: Added 'teacher' to the first fieldset
+        ('Event Target', {'fields': ('teacher', 'parent', 'student', 'section')}),  # ← ADD 'teacher' HERE
         ('Details', {'fields': ('title', 'description', 'event_type', 'scheduled_at', 'location')}),
         ('Extra', {'fields': ('extra_data',)}),
         ('System', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
     )
-
+    
 @admin.register(ParentSchedule)
 class ParentScheduleAdmin(admin.ModelAdmin):
     list_display = ['id', 'student', 'subject', 'day_of_week', 'time_label', 'room', 'created_at']
@@ -167,6 +168,7 @@ class ParentScheduleAdmin(admin.ModelAdmin):
         ('Extra', {'fields': ('extra_data',)}),
         ('System', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
     )
+
 
 
 
