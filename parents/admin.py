@@ -139,7 +139,6 @@ class ParentEventAdmin(admin.ModelAdmin):
         ('System', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
     )
 
-
 @admin.register(ParentSchedule)
 class ParentScheduleAdmin(admin.ModelAdmin):
     list_display = ['id', 'student', 'subject', 'day_of_week', 'time_label', 'room', 'created_at']
@@ -168,6 +167,7 @@ class ParentScheduleAdmin(admin.ModelAdmin):
         ('Extra', {'fields': ('extra_data',)}),
         ('System', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
     )
+
 
 
 
