@@ -127,8 +127,7 @@ class ParentNotificationAdmin(admin.ModelAdmin):
 class ParentEventAdmin(admin.ModelAdmin):
     list_display = ['id', 'parent', 'student', 'section', 'title', 'event_type', 'scheduled_at', 'created_at']
     list_filter = ['event_type', 'section', 'scheduled_at', 'created_at']
-
-    search_fields = ['parent__name', 'parent__username', 'student__name', 'title', 'description']
+    search_fields = ['parent__name', 'parent__username', 'student__name', 'student__lrn', 'title', 'description']
     readonly_fields = ['created_at', 'updated_at']
     # REMOVED autocomplete_fields - using raw_id_fields instead
     raw_id_fields = ['parent', 'student']
@@ -169,5 +168,6 @@ class ParentScheduleAdmin(admin.ModelAdmin):
         ('Extra', {'fields': ('extra_data',)}),
         ('System', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
     )
+
 
 
