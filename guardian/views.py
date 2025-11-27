@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from teacher.models import TeacherProfile
+from parents.models import ParentGuardian, ParentMobileAccount
 from .models import Guardian
 from .serializers import GuardianSerializer
 import base64
@@ -12,11 +13,85 @@ from django.db.models import Q
 class GuardianView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def patch(self, request, pk=None, **kwargs):
+        """Partially update a guardian (e.g., status change)"""
+        try:
+            # Extract pk from kwargs if not provided as parameter
+            if pk is None and 'pk' in kwargs:
+                pk = kwargs['pk']
+            
+            # Get the guardian
+            if not pk:
+                return Response(
+                    {"error": "Guardian ID is required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            try:
+                guardian = Guardian.objects.get(id=pk)
+            except Guardian.DoesNotExist:
+                return Response(
+                    {"error": "Guardian not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Verify user is authorized to update this guardian
+            # Either they are the teacher of this guardian, or they are updating only the status field
+            try:
+                teacher_profile = TeacherProfile.objects.get(user=request.user)
+                # User is a teacher, allow update if it's their guardian
+                if guardian.teacher != teacher_profile:
+                    return Response(
+                        {"error": "You don't have permission to edit this guardian"},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+            except TeacherProfile.DoesNotExist:
+                # User is not a teacher (likely a parent/guardian)
+                # Only allow updating the status field
+                if request.data and len(request.data) > 0:
+                    allowed_fields = {'status'}
+                    provided_fields = set(request.data.keys())
+                    if not provided_fields.issubset(allowed_fields):
+                        return Response(
+                            {"error": "Parents/Guardians can only update the status field"},
+                            status=status.HTTP_403_FORBIDDEN
+                        )
+
+            
+            # Update guardian with partial data
+            print(f"[PATCH DEBUG] Updating guardian {pk} with data: {request.data}")
+            serializer = GuardianSerializer(
+                guardian, 
+                data=request.data, 
+                partial=True,
+                context={'request': request}
+            )
+            
+            if serializer.is_valid():
+                updated_guardian = serializer.save()
+                print(f"[PATCH DEBUG] Guardian {pk} updated successfully. New status: {updated_guardian.status}")
+                return Response({
+                    "message": "Guardian updated successfully",
+                    "data": serializer.data
+                }, status=status.HTTP_200_OK)
+            
+            print(f"[PATCH DEBUG] Serializer errors: {serializer.errors}")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+        except Exception as e:
+            return Response(
+                {"error": f"Error updating guardian: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     
-    def get(self, request, pk=None):
+    def get(self, request, pk=None, **kwargs):
         """Get all guardians for the authenticated teacher or by teacher ID"""
         try:
-      
+            # Extract pk from kwargs if not provided as parameter
+            if pk is None and 'pk' in kwargs:
+                pk = kwargs['pk']
+            
             if pk:
                 try:
                     teacher_profile = TeacherProfile.objects.get(id=pk)
@@ -137,9 +212,13 @@ class GuardianView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
-    def put(self, request, pk=None):
+    def put(self, request, pk=None, **kwargs):
         """Update an existing guardian"""
         try:
+            # Extract pk from kwargs if not provided as parameter
+            if pk is None and 'pk' in kwargs:
+                pk = kwargs['pk']
+            
             # Get the teacher profile
             try:
                 teacher_profile = TeacherProfile.objects.get(user=request.user)
@@ -202,9 +281,13 @@ class GuardianView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
-    def delete(self, request, pk=None):
+    def delete(self, request, pk=None, **kwargs):
         """Delete a guardian"""
         try:
+            # Extract pk from kwargs if not provided as parameter
+            if pk is None and 'pk' in kwargs:
+                pk = kwargs['pk']
+            
             # Get the teacher profile
             try:
                 teacher_profile = TeacherProfile.objects.get(user=request.user)
@@ -276,7 +359,7 @@ class GuardianByTeacherView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-# new
+
 class GuardianPublicListView(APIView):
     """
     Lightweight read-only endpoint so parents/mobile clients can view pending guardians.
@@ -311,35 +394,186 @@ class GuardianPublicListView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-class GuardianByTeacherView(APIView):
-    """Separate view to get guardians by teacher ID"""
-    permission_classes = [permissions.IsAuthenticated]
-    
-    def get(self, request, teacher_id):
-        """Get all guardians for a specific teacher by teacher ID"""
+class ParentGuardianListView(APIView):
+    """
+    Endpoint for parents to view and manage guardian requests for their child.
+    Parents pass their parent_id as query parameter.
+    """
+    permission_classes = [permissions.AllowAny]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get(self, request):
+        """Get all pending guardians for a parent's child"""
         try:
-            # Get the teacher profile
-            try:
-                teacher_profile = TeacherProfile.objects.get(id=teacher_id)
-            except TeacherProfile.DoesNotExist:
+            # Get parent_id from query parameter
+            parent_id = request.query_params.get('parent_id')
+            
+            if not parent_id:
                 return Response(
-                    {"error": f"Teacher profile with ID {teacher_id} not found."},
+                    {"error": "parent_id is required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            try:
+                parent_guardian = ParentGuardian.objects.get(id=parent_id)
+            except ParentGuardian.DoesNotExist:
+                return Response(
+                    {"error": "Parent guardian account not found"},
                     status=status.HTTP_404_NOT_FOUND
                 )
             
-            # Get guardians for this teacher
-            guardians = Guardian.objects.filter(teacher=teacher_profile).order_by('-timestamp')
+            # Get guardians for this parent's student
+            # Match by the student FK when set, or by student_name (case-insensitive)
+            student = parent_guardian.student
+            guardians = Guardian.objects.filter(
+                (Q(student=student) | Q(student_name__iexact=student.name)),
+                status='pending'  # Only show pending guardians
+            ).order_by('-timestamp')
+            
             serializer = GuardianSerializer(guardians, many=True, context={'request': request})
             
             return Response({
                 "count": guardians.count(),
-                "teacher_id": teacher_profile.id,
-                "teacher_name": teacher_profile.user.get_full_name() or teacher_profile.user.username,
+                "student_id": student.lrn,
+                "student_name": student.name,
                 "results": serializer.data
             }, status=status.HTTP_200_OK)
             
+        except ParentGuardian.DoesNotExist:
+            return Response(
+                {"error": "Parent guardian account not found"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         except Exception as e:
             return Response(
                 {"error": f"Error fetching guardians: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def patch(self, request, pk=None):
+        """Update guardian status (allow/decline) for parent"""
+        try:
+            if not pk:
+                return Response(
+                    {"error": "Guardian ID is required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Get parent_id from query parameter
+            parent_id = request.query_params.get('parent_id')
+            
+            if not parent_id:
+                return Response(
+                    {"error": "parent_id is required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            try:
+                parent_guardian = ParentGuardian.objects.get(id=parent_id)
+            except ParentGuardian.DoesNotExist:
+                return Response(
+                    {"error": "Parent guardian account not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Get the guardian - verify it belongs to this parent's student
+            # Try to find the guardian by id and verify it belongs to this parent's student.
+            # Support records where the guardian.student FK is null by falling back to student_name.
+            guardian_qs = Guardian.objects.filter(id=pk).filter(
+                Q(student=parent_guardian.student) | Q(student_name__iexact=parent_guardian.student.name)
+            )
+            guardian = guardian_qs.first()
+            if not guardian:
+                return Response(
+                    {"error": "Guardian not found or does not belong to your child"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Only allow updating status field for parents
+            allowed_fields = {'status'}
+            provided_fields = set(request.data.keys())
+            if not provided_fields.issubset(allowed_fields):
+                return Response(
+                    {"error": "Parents can only update the status field"},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Update status
+            serializer = GuardianSerializer(
+                guardian,
+                data=request.data,
+                partial=True,
+                context={'request': request}
+            )
+            
+            if serializer.is_valid():
+                serializer.save()
+                return Response({
+                    "message": "Guardian status updated successfully",
+                    "data": serializer.data
+                }, status=status.HTTP_200_OK)
+            
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+        except Exception as e:
+            return Response(
+                {"error": f"Error updating guardian: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def delete(self, request, pk=None):
+        """Delete a guardian for parent"""
+        try:
+            if not pk:
+                return Response(
+                    {"error": "Guardian ID is required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Get parent_id from query parameter
+            parent_id = request.query_params.get('parent_id')
+            
+            if not parent_id:
+                return Response(
+                    {"error": "parent_id is required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Get the parent guardian account
+            parent_guardian = None
+            try:
+                parent_guardian = ParentGuardian.objects.get(id=parent_id)
+            except ParentGuardian.DoesNotExist:
+                return Response(
+                    {"error": "Parent guardian account not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            if not parent_guardian:
+                return Response(
+                    {"error": "Parent guardian account not found"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Get the guardian - verify it belongs to this parent's student
+            guardian_qs = Guardian.objects.filter(id=pk).filter(
+                Q(student=parent_guardian.student) | Q(student_name__iexact=parent_guardian.student.name)
+            )
+            guardian = guardian_qs.first()
+            if not guardian:
+                return Response(
+                    {"error": "Guardian not found or does not belong to your child"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            guardian.delete()
+            return Response(
+                {"message": "Guardian deleted successfully"},
+                status=status.HTTP_200_OK
+            )
+            
+        except Exception as e:
+            return Response(
+                {"error": f"Error deleting guardian: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
