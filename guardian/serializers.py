@@ -1,9 +1,12 @@
-from rest_framework import serializers
+ from rest_framework import serializers
 from .models import Guardian
 
 class GuardianSerializer(serializers.ModelSerializer):
     photo_url = serializers.SerializerMethodField()
     teacher_name = serializers.CharField(source='teacher.user.get_full_name', read_only=True)
+
+    student_id = serializers.CharField(source='student.lrn', read_only=True)
+    parent_guardian_name = serializers.CharField(source='parent_guardian.name', read_only=True)
     
     class Meta:
         model = Guardian
@@ -11,6 +14,12 @@ class GuardianSerializer(serializers.ModelSerializer):
             'id',
             'teacher',
             'teacher_name',
+
+            'parent_guardian',
+            'parent_guardian_name',
+            'student',
+            'student_id',
+            
             'name',
             'age',
             'address',
@@ -19,9 +28,12 @@ class GuardianSerializer(serializers.ModelSerializer):
             'student_name',
             'photo',
             'photo_url',
+
+            'status',
+            
             'timestamp'
         ]
-        read_only_fields = ['id', 'timestamp', 'teacher_name', 'photo_url']
+        read_only_fields = ['id', 'timestamp', 'teacher_name', 'photo_url', 'student_id', 'parent_guardian_name']
     
     def get_photo_url(self, obj):
         """Return the full URL for the photo"""
@@ -51,3 +63,10 @@ class GuardianSerializer(serializers.ModelSerializer):
         if not value or not value.strip():
             raise serializers.ValidationError("Student name cannot be empty.")
         return value.strip()
+
+
+    def validate_status(self, value):
+        """Validate status is one of the allowed choices"""
+        if value not in ['pending', 'allowed', 'declined']:
+            raise serializers.ValidationError("Status must be 'pending', 'allowed', or 'declined'.")
+        return value
