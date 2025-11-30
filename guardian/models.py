@@ -2,11 +2,34 @@ from django.db import models
 from teacher.models import TeacherProfile
 
 class Guardian(models.Model):
+     STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('allowed', 'Allowed'),
+        ('declined', 'Declined'),
+    ]
+    
     teacher = models.ForeignKey(
         TeacherProfile, 
         on_delete=models.CASCADE, 
         related_name='guardians'
     )
+
+     parent_guardian = models.ForeignKey(
+        ParentGuardian,
+        on_delete=models.CASCADE,
+        related_name='registered_guardians',
+        null=True,
+        blank=True
+    )
+
+    student = models.ForeignKey(
+        Student,
+        on_delete=models.CASCADE,
+        related_name='guardians',
+        null=True,
+        blank=True
+    )
+
     name = models.CharField(max_length=255)
     age = models.IntegerField()
     address = models.TextField(blank=True, null=True)
@@ -19,6 +42,13 @@ class Guardian(models.Model):
         null=True,
         help_text='Guardian photo'
     )
+     status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending',
+        help_text='Approval status of the guardian'
+    )
+
     timestamp = models.DateTimeField(auto_now_add=True)
     
     class Meta:
@@ -27,7 +57,7 @@ class Guardian(models.Model):
         verbose_name_plural = 'Guardians'
     
     def __str__(self):
-        return f"{self.name} - Guardian of {self.student_name}"
+        return f"{self.name} - Guardian of {self.student_name} ({self.get_status_display()})"
     
     def get_photo_url(self):
         """Get the full URL for the photo"""
