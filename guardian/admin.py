@@ -25,7 +25,7 @@ class GuardianAdmin(admin.ModelAdmin):
             'fields': ('teacher', 'name', 'age', 'relationship')
         }),
         ('Student Information', {
-            'fields': ('student_name',)
+            'fields': ('student_name', 'student', 'parent_guardian')
         }),
         ('Contact Details', {
             'fields': ('contact', 'address')
@@ -46,7 +46,13 @@ class GuardianAdmin(admin.ModelAdmin):
     
     def teacher_display(self, obj):
         """Display teacher's full name"""
-        return obj.teacher.user.get_full_name() or obj.teacher.user.username
+        try:
+            if obj.teacher and obj.teacher.user:
+                full_name = obj.teacher.user.get_full_name()
+                return full_name if full_name else obj.teacher.user.username
+            return 'N/A'
+        except Exception:
+            return 'N/A'
     teacher_display.short_description = 'Teacher'
     
     def status_badge(self, obj):
@@ -66,27 +72,33 @@ class GuardianAdmin(admin.ModelAdmin):
     def photo_thumbnail(self, obj):
         """Display small thumbnail in list view"""
         if obj.photo:
-            return format_html(
-                '<img src="{}" style="width: 40px; height: 40px; object-fit: cover; border-radius: 50%;" />',
-                obj.photo.url
-            )
+            try:
+                return format_html(
+                    '<img src="{}" style="width: 40px; height: 40px; object-fit: cover; border-radius: 50%;" />',
+                    obj.photo.url
+                )
+            except Exception:
+                return format_html('<span style="color: #999;">Error loading photo</span>')
         return format_html('<span style="color: #999;">No photo</span>')
     photo_thumbnail.short_description = 'Photo'
     
     def photo_preview(self, obj):
         """Display larger preview in detail view"""
         if obj.photo:
-            return format_html(
-                '<img src="{}" style="max-width: 300px; max-height: 300px; object-fit: contain; border: 1px solid #ddd; border-radius: 8px;" />',
-                obj.photo.url
-            )
+            try:
+                return format_html(
+                    '<img src="{}" style="max-width: 300px; max-height: 300px; object-fit: contain; border: 1px solid #ddd; border-radius: 8px;" />',
+                    obj.photo.url
+                )
+            except Exception:
+                return format_html('<span style="color: #999;">Error loading photo</span>')
         return format_html('<span style="color: #999;">No photo uploaded</span>')
     photo_preview.short_description = 'Photo Preview'
     
     def get_queryset(self, request):
         """Optimize queries by selecting related teacher and user"""
         qs = super().get_queryset(request)
-        return qs.select_related('teacher', 'teacher__user')
+        return qs.select_related('teacher', 'teacher__user', 'student', 'parent_guardian')
     
     actions = ['mark_as_allowed', 'mark_as_declined', 'mark_as_pending']
     
