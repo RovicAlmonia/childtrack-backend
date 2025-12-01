@@ -22,5 +22,3 @@ class UnauthorizedPersonAdmin(admin.ModelAdmin):
     list_filter = ['relation', 'timestamp']
     date_hierarchy = 'timestamp'
     ordering = ['-timestamp']
-
-
