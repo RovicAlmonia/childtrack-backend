@@ -23,7 +23,10 @@ class GuardianAdmin(admin.ModelAdmin):
     search_fields = ['name', 'student_name', 'contact', 'address']
     readonly_fields = ['timestamp', 'photo_preview']
     date_hierarchy = 'timestamp'
-    list_select_related = ['teacher', 'teacher__user', 'student', 'parent_guardian']
+    
+    # Fixed: Only include teacher__user since it's the only guaranteed relationship
+    # student and parent_guardian are nullable, so we handle them in get_queryset
+    list_select_related = ['teacher', 'teacher__user']
     
     fieldsets = (
         ('Guardian Information', {
@@ -104,7 +107,6 @@ class GuardianAdmin(admin.ModelAdmin):
             if not obj.photo.name:
                 return format_html('<span style="color: #dc3545; font-size: 11px;">Missing file</span>')
             
-            # Try to get the URL
             try:
                 photo_url = obj.photo.url
             except (ValueError, AttributeError) as e:
@@ -178,14 +180,11 @@ class GuardianAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         """Optimize queries by selecting related objects"""
         qs = super().get_queryset(request)
-        return qs.select_related(
-            'teacher',
-            'teacher__user',
-            'student',
-            'parent_guardian'
-        ).prefetch_related(
-            'teacher__user__groups'
-        )
+        # Use select_related for required relationships and nullable ones
+        qs = qs.select_related('teacher', 'teacher__user')
+        
+        # Use prefetch_related for nullable relationships to avoid issues
+        return qs.prefetch_related('student', 'parent_guardian')
     
     actions = ['mark_as_allowed', 'mark_as_declined', 'mark_as_pending']
     
