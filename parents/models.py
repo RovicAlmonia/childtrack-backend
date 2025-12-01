@@ -195,14 +195,26 @@ class ParentNotification(models.Model):
 
 
 class ParentEvent(models.Model):
-    teacher = models.ForeignKey('teacher.TeacherProfile', on_delete=models.CASCADE, related_name='events')
+    # Allow NULL to avoid forcing a one-off default during migrations.
+    # Existing database rows may have NULL values; keep the field nullable
+    # so migrations remain non-interactive and safe.
+    teacher = models.ForeignKey(
+        'teacher.TeacherProfile',
+        on_delete=models.CASCADE,
+        related_name='events',
+        null=True,
+        blank=True,
+    )
     parent = models.ForeignKey(ParentGuardian, on_delete=models.CASCADE, null=True, blank=True, related_name='events')
     student = models.ForeignKey(Student, on_delete=models.CASCADE, null=True, blank=True, related_name='events')
     section = models.CharField(max_length=50, blank=True, null=True)
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     event_type = models.CharField(max_length=50)
-    scheduled_at = models.DateTimeField()
+    # Allow NULL for existing rows to avoid interactive migration prompts.
+    # This keeps compatible behavior with older data and prevents
+    # Django from asking for a one-off default when running makemigrations.
+    scheduled_at = models.DateTimeField(null=True, blank=True)
     location = models.CharField(max_length=200, blank=True)
     extra_data = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -265,7 +277,6 @@ class ParentSchedule(models.Model):
             return f"{self.subject} - {student_name}"
         except:
             return f"{self.subject}"
-
 
 
 
