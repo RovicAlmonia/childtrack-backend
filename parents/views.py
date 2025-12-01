@@ -3,6 +3,8 @@ import json
 from django.db import transaction
 from django.db.models import Prefetch, Q
 from django.contrib.auth import authenticate
+from django.conf import settings
+import os
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -31,6 +33,47 @@ from .serializers import (
 logger = logging.getLogger(__name__)
 
 import traceback
+
+
+class AvatarDebugView(APIView):
+    """Debug endpoint: check whether a media file exists on disk and return its URL.
+
+    Query params:
+      - file: relative path under MEDIA_ROOT (e.g. parent_avatars/jaymoelojo.png)
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        file_param = request.query_params.get('file')
+        if not file_param:
+            return Response({"error": "file query param required, e.g. ?file=parent_avatars/name.png"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Normalize path to avoid path traversal
+        file_rel = os.path.normpath(file_param).lstrip(os.sep)
+        full_path = os.path.join(settings.MEDIA_ROOT, file_rel)
+        exists = os.path.exists(full_path)
+
+        # Build public URL (use settings.MEDIA_URL)
+        media_url = getattr(settings, 'MEDIA_URL', '/media/')
+        # Ensure leading slash on media_url
+        if not media_url.startswith('/') and not media_url.startswith('http'):
+            media_url = '/' + media_url
+
+        # If MEDIA_URL is absolute already, use it; otherwise build absolute using request
+        if media_url.startswith('http'):
+            public_url = f"{media_url.rstrip('/')}/{file_rel}" if file_rel else None
+        else:
+            try:
+                public_url = request.build_absolute_uri(f"{media_url.rstrip('/')}/{file_rel}")
+            except Exception:
+                public_url = f"{media_url.rstrip('/')}/{file_rel}"
+
+        return Response({
+            'file': file_rel,
+            'exists_on_disk': exists,
+            'full_path': full_path if exists else None,
+            'public_url': public_url,
+        })
 
 
 class StandardPagination(PageNumberPagination):
@@ -280,7 +323,7 @@ class ParentGuardianListView(APIView):
             
             paginator = self.pagination_class()
             page = paginator.paginate_queryset(qs, request)
-            serializer = ParentGuardianSerializer(page, many=True)
+            serializer = ParentGuardianSerializer(page, many=True, context={'request': request})
             return paginator.get_paginated_response(serializer.data)
         except TeacherProfile.DoesNotExist:
             return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
@@ -304,7 +347,7 @@ class StudentDetailView(APIView):
         parents = ParentGuardian.objects.filter(student=student)
         response_data = {
             "student": StudentSerializer(student).data,
-            "parents_guardians": ParentGuardianSerializer(parents, many=True).data,
+            "parents_guardians": ParentGuardianSerializer(parents, many=True, context={'request': request}).data,
         }
         return Response(response_data)
 
@@ -443,7 +486,7 @@ class ParentGuardianPublicListView(APIView):
             except (TypeError, ValueError):
                 logger.warning("Invalid limit param for ParentGuardianPublicListView: %s", limit)
 
-        serializer = ParentGuardianSerializer(queryset, many=True)
+        serializer = ParentGuardianSerializer(queryset, many=True, context={'request': request})
         return Response(serializer.data)
 
 
@@ -902,5 +945,4 @@ class ParentScheduleListCreateView(APIView):
             output = ParentScheduleSerializer(schedule).data
             return Response(output, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 

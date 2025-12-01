@@ -40,7 +40,10 @@ class ParentGuardianSerializer(serializers.ModelSerializer):
     has_mobile_account = serializers.SerializerMethodField()
     password = serializers.CharField(max_length=100, required=False, allow_blank=True)
     must_change_credentials = serializers.BooleanField(read_only=True)
+    # Raw ImageField for uploads
     avatar = serializers.ImageField(required=False, allow_null=True)
+    # Public URL for the avatar (absolute URL when request context provided)
+    avatar_url = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = ParentGuardian
@@ -63,13 +66,27 @@ class ParentGuardianSerializer(serializers.ModelSerializer):
             'password',
             'must_change_credentials',
             'avatar',
+            'avatar_url',
             'has_mobile_account',
             'created_at',
         ]
-        read_only_fields = ['created_at', 'teacher']
+        read_only_fields = ['created_at', 'teacher', 'avatar_url']
     
     def get_has_mobile_account(self, obj):
         return hasattr(obj, 'mobile_account')
+
+    def get_avatar_url(self, obj):
+        """Return full absolute URL for the avatar if available."""
+        if not obj.avatar:
+            return None
+        request = self.context.get('request')
+        try:
+            # If we have request in context, build absolute URI
+            if request:
+                return request.build_absolute_uri(obj.avatar.url)
+            return obj.avatar.url
+        except Exception:
+            return None
 
 
 class ParentMobileAccountSerializer(serializers.ModelSerializer):

@@ -277,6 +277,3 @@ class ParentSchedule(models.Model):
             return f"{self.subject} - {student_name}"
         except:
             return f"{self.subject}"
-
-
-
