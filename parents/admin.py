@@ -125,19 +125,29 @@ class ParentNotificationAdmin(admin.ModelAdmin):
 
 @admin.register(ParentEvent)
 class ParentEventAdmin(admin.ModelAdmin):
-    list_display = ['id', 'parent', 'student', 'section', 'title', 'event_type', 'scheduled_at', 'created_at']
-    list_filter = ['event_type', 'section', 'scheduled_at', 'created_at']
-    search_fields = ['parent__name', 'parent__username', 'student__name', 'student__lrn', 'title', 'description']
+    list_display = ['id', 'teacher', 'title', 'event_type', 'section', 'scheduled_at', 'created_at']
+    list_filter = ['event_type', 'section', 'teacher', 'scheduled_at', 'created_at']
+    search_fields = ['title', 'description', 'teacher__user__username', 'parent__name', 'student__name', 'student__lrn']
     readonly_fields = ['created_at', 'updated_at']
-    # FIXED: Removed 'teacher' since it doesn't exist in the model
-    raw_id_fields = ['parent', 'student']  # ← REMOVE 'teacher'
+    raw_id_fields = ['parent', 'student']
     fieldsets = (
-        # FIXED: Removed 'teacher' from fieldsets
-        ('Event Target', {'fields': ('parent', 'student', 'section')}),  # ← REMOVE 'teacher'
-        ('Details', {'fields': ('title', 'description', 'event_type', 'scheduled_at', 'location')}),
+        ('Event Details', {'fields': ('title', 'description', 'event_type', 'scheduled_at', 'location')}),
+        ('Target', {'fields': ('teacher', 'section', 'parent', 'student')}),
         ('Extra', {'fields': ('extra_data',)}),
         ('System', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
     )
+    
+    def get_queryset(self, request):
+        """Return all events; superusers see all, regular teachers see only their own."""
+        qs = super().get_queryset(request)
+        if not request.user.is_superuser:
+            try:
+                teacher_profile = request.user.teacherprofile
+                qs = qs.filter(teacher=teacher_profile)
+            except:
+                # If user is not a teacher, show nothing
+                qs = qs.none()
+        return qs
     
 @admin.register(ParentSchedule)
 class ParentScheduleAdmin(admin.ModelAdmin):
@@ -167,7 +177,6 @@ class ParentScheduleAdmin(admin.ModelAdmin):
         ('Extra', {'fields': ('extra_data',)}),
         ('System', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
     )
-
 
 
 
