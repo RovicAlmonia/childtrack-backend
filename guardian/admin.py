@@ -11,13 +11,11 @@ class GuardianAdmin(admin.ModelAdmin):
         'relationship', 
         'contact', 
         'teacher_display',
-        
         'status_badge',
-
         'photo_thumbnail',
         'timestamp'
     ]
-    list_filter = ['relationship', 'timestamp', 'teacher', 'status']
+    list_filter = ['status', 'relationship', 'timestamp', 'teacher']
     search_fields = ['name', 'student_name', 'contact', 'address']
     readonly_fields = ['timestamp', 'photo_preview']
     date_hierarchy = 'timestamp'
@@ -50,8 +48,8 @@ class GuardianAdmin(admin.ModelAdmin):
         """Display teacher's full name"""
         return obj.teacher.user.get_full_name() or obj.teacher.user.username
     teacher_display.short_description = 'Teacher'
-
-     def status_badge(self, obj):
+    
+    def status_badge(self, obj):
         """Display status with color badge"""
         colors = {
             'pending': '#ffa500',
@@ -64,7 +62,7 @@ class GuardianAdmin(admin.ModelAdmin):
             obj.get_status_display()
         )
     status_badge.short_description = 'Status'
-
+    
     def photo_thumbnail(self, obj):
         """Display small thumbnail in list view"""
         if obj.photo:
@@ -85,24 +83,24 @@ class GuardianAdmin(admin.ModelAdmin):
         return format_html('<span style="color: #999;">No photo uploaded</span>')
     photo_preview.short_description = 'Photo Preview'
     
-  def get_queryset(self, request):
+    def get_queryset(self, request):
         """Optimize queries by selecting related teacher and user"""
         qs = super().get_queryset(request)
         return qs.select_related('teacher', 'teacher__user')
     
     actions = ['mark_as_allowed', 'mark_as_declined', 'mark_as_pending']
-
-def mark_as_allowed(self, request, queryset):
+    
+    def mark_as_allowed(self, request, queryset):
         updated = queryset.update(status='allowed')
         self.message_user(request, f'{updated} guardian(s) marked as allowed.')
     mark_as_allowed.short_description = 'Mark selected as Allowed'
     
-def mark_as_declined(self, request, queryset):
+    def mark_as_declined(self, request, queryset):
         updated = queryset.update(status='declined')
         self.message_user(request, f'{updated} guardian(s) marked as declined.')
     mark_as_declined.short_description = 'Mark selected as Declined'
     
-def mark_as_pending(self, request, queryset):
+    def mark_as_pending(self, request, queryset):
         updated = queryset.update(status='pending')
         self.message_user(request, f'{updated} guardian(s) marked as pending.')
     mark_as_pending.short_description = 'Mark selected as Pending'
