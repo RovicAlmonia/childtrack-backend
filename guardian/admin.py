@@ -19,14 +19,10 @@ class GuardianAdmin(admin.ModelAdmin):
         'photo_thumbnail',
         'timestamp'
     ]
-    list_filter = ['status', 'relationship', 'timestamp', 'teacher']
+    list_filter = ['status', 'relationship', 'timestamp']
     search_fields = ['name', 'student_name', 'contact', 'address']
     readonly_fields = ['timestamp', 'photo_preview']
     date_hierarchy = 'timestamp'
-    
-    # Fixed: Only include teacher__user since it's the only guaranteed relationship
-    # student and parent_guardian are nullable, so we handle them in get_queryset
-    list_select_related = ['teacher', 'teacher__user']
     
     fieldsets = (
         ('Guardian Information', {
@@ -75,7 +71,6 @@ class GuardianAdmin(admin.ModelAdmin):
             return format_html('<span style="color: #dc3545;">Error</span>')
     
     teacher_display.short_description = 'Teacher'
-    teacher_display.admin_order_field = 'teacher__user__last_name'
     
     def status_badge(self, obj):
         """Display status with color badge"""
@@ -96,7 +91,6 @@ class GuardianAdmin(admin.ModelAdmin):
             return obj.status
     
     status_badge.short_description = 'Status'
-    status_badge.admin_order_field = 'status'
     
     def photo_thumbnail(self, obj):
         """Display small thumbnail in list view with better error handling"""
@@ -178,13 +172,10 @@ class GuardianAdmin(admin.ModelAdmin):
     photo_preview.short_description = 'Photo Preview'
     
     def get_queryset(self, request):
-        """Optimize queries by selecting related objects"""
+        """Optimize queries - removed select_related to avoid issues with nullable FKs"""
         qs = super().get_queryset(request)
-        # Use select_related for required relationships and nullable ones
-        qs = qs.select_related('teacher', 'teacher__user')
-        
-        # Use prefetch_related for nullable relationships to avoid issues
-        return qs.prefetch_related('student', 'parent_guardian')
+        # Don't use select_related or prefetch_related for now to isolate the issue
+        return qs
     
     actions = ['mark_as_allowed', 'mark_as_declined', 'mark_as_pending']
     
