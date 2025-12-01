@@ -1,8 +1,9 @@
 from django.db import models
 from teacher.models import TeacherProfile
+from parents.models import ParentGuardian, Student
 
 class Guardian(models.Model):
-     STATUS_CHOICES = [
+    STATUS_CHOICES = [
         ('pending', 'Pending'),
         ('allowed', 'Allowed'),
         ('declined', 'Declined'),
@@ -13,15 +14,15 @@ class Guardian(models.Model):
         on_delete=models.CASCADE, 
         related_name='guardians'
     )
-
-     parent_guardian = models.ForeignKey(
+    # Link to the parent/guardian who registered this guardian
+    parent_guardian = models.ForeignKey(
         ParentGuardian,
         on_delete=models.CASCADE,
         related_name='registered_guardians',
         null=True,
         blank=True
     )
-
+    # Link to the student
     student = models.ForeignKey(
         Student,
         on_delete=models.CASCADE,
@@ -29,7 +30,6 @@ class Guardian(models.Model):
         null=True,
         blank=True
     )
-
     name = models.CharField(max_length=255)
     age = models.IntegerField()
     address = models.TextField(blank=True, null=True)
@@ -42,13 +42,12 @@ class Guardian(models.Model):
         null=True,
         help_text='Guardian photo'
     )
-     status = models.CharField(
+    status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
         default='pending',
         help_text='Approval status of the guardian'
     )
-
     timestamp = models.DateTimeField(auto_now_add=True)
     
     class Meta:
