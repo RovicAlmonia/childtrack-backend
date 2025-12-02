@@ -34,14 +34,14 @@ class StudentAdmin(admin.ModelAdmin):
 
 @admin.register(ParentGuardian)
 class ParentGuardianAdmin(admin.ModelAdmin):
-    list_display = ['username', 'name', 'role', 'student', 'teacher', 'contact_number', 'created_at']
+    list_display = ['username', 'name', 'role', 'student', 'teacher', 'avatar_thumbnail', 'contact_number', 'created_at']
     search_fields = ['username', 'name', 'student__name', 'student__lrn', 'teacher__user__username']
     list_filter = ['role', 'teacher', 'created_at']
-    readonly_fields = ['created_at', 'updated_at', 'qr_code_data']
+    readonly_fields = ['created_at', 'updated_at', 'qr_code_data', 'avatar_preview']
     
     fieldsets = (
         ('Personal Information', {
-            'fields': ('username', 'name', 'password', 'role', 'contact_number', 'email', 'address', 'avatar')
+            'fields': ('username', 'name', 'password', 'role', 'contact_number', 'email', 'address')
         }),
         ('Relationships', {
             'fields': ('student', 'teacher')
@@ -49,6 +49,10 @@ class ParentGuardianAdmin(admin.ModelAdmin):
         ('QR Code Data', {
             'fields': ('qr_code_data',),
             'classes': ('collapse',)
+        }),
+        ('Photo', {
+            'fields': ('avatar', 'avatar_preview'),
+            'description': 'Upload parent avatar (optional)'
         }),
         ('System Information', {
             'fields': ('created_at', 'updated_at'),
@@ -66,6 +70,67 @@ class ParentGuardianAdmin(admin.ModelAdmin):
             except:
                 return qs.none()
         return qs
+
+    def avatar_thumbnail(self, obj):
+        """Display small thumbnail in list view"""
+        if getattr(obj, 'avatar', None):
+            try:
+                return format_html(
+                    '<img src="{}" style="width: 40px; height: 40px; object-fit: cover; border-radius: 50%;" />',
+                    obj.avatar.url
+                )
+            except Exception:
+                return 'No photo'
+        return format_html('<span style="color: #999;">No photo</span>')
+    avatar_thumbnail.short_description = 'Avatar'
+
+    def avatar_preview(self, obj):
+        """Display larger preview in detail view with live preview for new uploads"""
+        from django.utils.safestring import mark_safe
+
+        if getattr(obj, 'avatar', None):
+            try:
+                existing = format_html(
+                    '<div style="margin-bottom:12px;"><p style="color:#666; font-weight:bold;">Current avatar:</p>'
+                    '<img src="{}" style="max-width:400px; max-height:400px; object-fit:contain; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.1);" />'
+                    '<p style="color:#999; font-size:12px; margin-top:8px;">URL: <a href="{}" target="_blank">{}</a></p></div>',
+                    obj.avatar.url, obj.avatar.url, obj.avatar.url
+                )
+            except Exception as e:
+                existing = format_html('<p style="color:#d32f2f;">Error loading avatar: {}</p>', str(e))
+        else:
+            existing = '<p style="color:#999; font-style:italic;">No avatar uploaded yet</p>'
+
+        preview_html = '''
+        <div id="avatar-preview-container" style="margin-top:10px;">{existing}
+            <div id="avatar-preview-new" style="display:none; margin-top:12px;">
+                <p style="color:#666; font-weight:bold; margin-bottom:8px;">📷 New avatar preview:</p>
+                <img id="avatar-preview-img" src="" style="max-width:400px; max-height:400px; object-fit:contain; border:2px solid #4CAF50; border-radius:8px;" />
+            </div>
+        </div>
+        <script>
+        (function(){
+            function init(){
+                const input = document.querySelector('input[name="avatar"]') || document.querySelector('input[name="photo"]');
+                if(!input) return;
+                input.addEventListener('change', function(e){
+                    const f = e.target.files[0];
+                    const cont = document.getElementById('avatar-preview-new');
+                    const img = document.getElementById('avatar-preview-img');
+                    if(f && f.type.startsWith('image/')){
+                        const reader = new FileReader();
+                        reader.onload = function(ev){ img.src = ev.target.result; cont.style.display = 'block'; };
+                        reader.readAsDataURL(f);
+                    } else { cont.style.display = 'none'; }
+                });
+            }
+            if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+        })();
+        </script>
+        '''
+
+        return mark_safe(preview_html.format(existing=existing))
+    avatar_preview.short_description = 'Avatar Preview'
 
 
 @admin.register(ParentMobileAccount)

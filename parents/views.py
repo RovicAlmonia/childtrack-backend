@@ -13,6 +13,8 @@ from rest_framework.authtoken.models import Token
 
 from django.utils import timezone
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+import base64
+from django.core.files.base import ContentFile
 
 from .models import Student, ParentGuardian, ParentMobileAccount, ParentNotification, ParentEvent, ParentSchedule
 
@@ -595,9 +597,23 @@ class ParentDetailView(APIView):
                 setattr(parent, field, data.get(field))
                 updated = True
 
-        # handle avatar upload from multipart/form-data
-        if getattr(request, 'FILES', None) and 'avatar' in request.FILES:
-            uploaded = request.FILES['avatar']
+        # Support base64 avatar uploads using 'avatar_base64' (or 'photo_base64')
+        avatar_base64 = data.get('avatar_base64') or data.get('photo_base64')
+        if avatar_base64:
+            try:
+                if 'base64,' in avatar_base64:
+                    avatar_base64 = avatar_base64.split('base64,')[1]
+                avatar_data = base64.b64decode(avatar_base64)
+                avatar_name = f"parent_{(parent.name or 'parent').replace(' ', '_')}_{parent.id}.jpg"
+                parent.avatar = ContentFile(avatar_data, name=avatar_name)
+                updated = True
+                logger.info('Parent %s avatar set from base64 payload', parent.id)
+            except Exception as e:
+                logger.exception('Error processing base64 avatar for parent %s: %s', pk, str(e))
+
+        # handle multipart/form-data file upload (fallback)
+        if getattr(request, 'FILES', None) and ('avatar' in request.FILES or 'photo' in request.FILES):
+            uploaded = request.FILES.get('avatar') or request.FILES.get('photo')
             logger.debug('Saving uploaded avatar file: %s (size=%s)', uploaded.name, getattr(uploaded, 'size', 'unknown'))
             print(f"[ParentDetailView] received avatar file: {uploaded.name}, size={getattr(uploaded, 'size', 'unknown')}")
             parent.avatar = uploaded
