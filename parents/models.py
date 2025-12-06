@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.contrib.auth.hashers import make_password, identify_hasher
 from teacher.models import TeacherProfile
 
 class Student(models.Model):
@@ -111,6 +112,18 @@ class ParentGuardian(models.Model):
         if password_missing:
             uname_for_pw = generated_username or (self.username or 'parent')
             self.password = f"{uname_for_pw}123"
+
+        # Ensure password is hashed before saving. If password already appears
+        # to be a Django-hashed password, `identify_hasher` will succeed.
+        # If it raises, we assume it's a plain text password and hash it.
+        try:
+            if self.password:
+                # If identify_hasher doesn't raise, password is already hashed.
+                identify_hasher(self.password)
+        except Exception:
+            # Not a known hashed format -> hash it now
+            if self.password:
+                self.password = make_password(self.password)
 
         # If either credential was auto-generated on creation, require change on first login
         if is_new and (username_missing or password_missing):

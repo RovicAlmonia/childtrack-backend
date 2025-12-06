@@ -38,7 +38,8 @@ class ParentGuardianSerializer(serializers.ModelSerializer):
     student_gender = serializers.CharField(source='student.gender', read_only=True)
     teacher_name = serializers.CharField(source='teacher.user.username', read_only=True)
     has_mobile_account = serializers.SerializerMethodField()
-    password = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    # Never include stored password in API responses. Accept password on input only.
+    password = serializers.CharField(max_length=100, required=False, allow_blank=True, write_only=True)
     must_change_credentials = serializers.BooleanField(read_only=True)
     # Raw ImageField for uploads
     avatar = serializers.ImageField(required=False, allow_null=True)

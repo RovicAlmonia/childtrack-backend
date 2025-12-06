@@ -3,6 +3,7 @@ import json
 from django.db import transaction
 from django.db.models import Prefetch, Q
 from django.contrib.auth import authenticate
+from django.contrib.auth.hashers import check_password, make_password
 from django.conf import settings
 import os
 from rest_framework import permissions, status
@@ -513,8 +514,24 @@ class ParentLoginView(APIView):
         except ParentGuardian.DoesNotExist:
             return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Passwords are stored in plaintext in this model (per project choice)
-        if (pg.password or "") != password:
+        # Support both hashed and legacy-plaintext passwords.
+        valid = False
+        try:
+            if pg.password and check_password(password, pg.password):
+                valid = True
+            elif (pg.password or "") == password:
+                # Legacy plaintext match: upgrade to hashed password on successful login
+                pg.password = make_password(password)
+                pg.save(update_fields=['password'])
+                valid = True
+        except Exception:
+            # In case check_password/identify fails, fall back to plaintext compare
+            if (pg.password or "") == password:
+                pg.password = make_password(password)
+                pg.save(update_fields=['password'])
+                valid = True
+
+        if not valid:
             return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
         serializer = ParentGuardianSerializer(pg)
@@ -563,13 +580,12 @@ class ParentDetailView(APIView):
         if 'password' in data:
             new_pw = data.get('password')
             current_pw = data.get('current_password')
-            
+
             # If this parent record is flagged as requiring credential change on first login,
             # allow changing the password without providing the current_password. This supports
             # the mobile first-login flow where temporary credentials were auto-generated.
             if orig_must:
-                # For forced changes, accept any password without current_password verification
-                parent.password = str(new_pw)
+                parent.password = make_password(str(new_pw))
                 updated = True
                 changed_password = True
                 logger.info(f"Password changed for parent {parent.id} during forced credential update")
@@ -577,13 +593,31 @@ class ParentDetailView(APIView):
                 # For voluntary changes, require current password
                 if not current_pw:
                     return Response({'error': 'current_password is required to change password.'}, status=status.HTTP_400_BAD_REQUEST)
-                # simple plain-text compare (project currently stores plain passwords)
-                if (parent.password or '') != str(current_pw):
-                    return Response({'error': 'Current password is incorrect.'}, status=status.HTTP_401_UNAUTHORIZED)
-                parent.password = str(new_pw)
-                updated = True
-                changed_password = True
-                logger.info(f"Password changed for parent {parent.id} via voluntary update")
+
+                # Support both hashed and legacy-plaintext stored passwords
+                try:
+                    if parent.password and check_password(str(current_pw), parent.password):
+                        parent.password = make_password(str(new_pw))
+                        updated = True
+                        changed_password = True
+                        logger.info(f"Password changed for parent {parent.id} via voluntary update (hashed match)")
+                    elif (parent.password or '') == str(current_pw):
+                        # Legacy plaintext match: accept and upgrade stored password
+                        parent.password = make_password(str(new_pw))
+                        updated = True
+                        changed_password = True
+                        logger.info(f"Password changed for parent {parent.id} via voluntary update (plaintext match)")
+                    else:
+                        return Response({'error': 'Current password is incorrect.'}, status=status.HTTP_401_UNAUTHORIZED)
+                except Exception:
+                    # Fallback to plaintext compare if hashing utilities fail
+                    if (parent.password or '') == str(current_pw):
+                        parent.password = make_password(str(new_pw))
+                        updated = True
+                        changed_password = True
+                        logger.info(f"Password changed for parent {parent.id} via voluntary update (fallback)")
+                    else:
+                        return Response({'error': 'Current password is incorrect.'}, status=status.HTTP_401_UNAUTHORIZED)
 
         # Handle other fields
         for field in ('name', 'username', 'contact_number', 'address', 'email'):
