@@ -536,7 +536,11 @@ class ParentLoginView(APIView):
 
         if not username or not password:
             return Response({"error": "Username and password are required"}, status=status.HTTP_400_BAD_REQUEST)
-
+        # Lookup the ParentGuardian record by username
+        try:
+            pg = ParentGuardian.objects.get(username=username)
+        except ParentGuardian.DoesNotExist:
+            return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
         # Support both hashed and legacy-plaintext passwords.
         valid = False
@@ -564,7 +568,7 @@ class ParentLoginView(APIView):
         try:
             serializer = ParentGuardianSerializer(pg, context={'request': request})
             parent_data = serializer.data
-        except Exception as exc:
+        except Exception:
             logger.exception('ParentLoginView: serializer with request context failed')
             try:
                 serializer = ParentGuardianSerializer(pg)
