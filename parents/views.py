@@ -339,7 +339,13 @@ class ParentGuardianListView(APIView):
     Get parents/guardians for authenticated teacher, optionally filtered by LRN (paginated).
     /api/parents/parents/?lrn=<lrn>
     """
-    permission_classes = [permissions.IsAuthenticated]
+    # Allow unauthenticated GET (for mobile clients) but require authentication
+    # for other methods (future-proofing for create/update if added).
+    # Note: REST_FRAMEWORK default permission is strict; override per-method below.
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
     pagination_class = StandardPagination
 
     def get(self, request):
