@@ -88,50 +88,96 @@ class ParentGuardianAdmin(admin.ModelAdmin):
 
     def avatar_preview(self, obj):
         """Display larger preview in detail view with live preview for new uploads"""
-        from django.utils.safestring import mark_safe
-
+        # Reuse the same robust preview HTML used in guardian admin
         if getattr(obj, 'avatar', None):
             try:
-                existing = format_html(
-                    '<div style="margin-bottom:12px;"><p style="color:#666; font-weight:bold;">Current avatar:</p>'
-                    '<img src="{}" style="max-width:400px; max-height:400px; object-fit:contain; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.1);" />'
-                    '<p style="color:#999; font-size:12px; margin-top:8px;">URL: <a href="{}" target="_blank">{}</a></p></div>',
-                    obj.avatar.url, obj.avatar.url, obj.avatar.url
+                existing_avatar = format_html(
+                    '''<div style="margin-bottom: 15px;">
+                        <p style="color: #666; font-weight: bold; margin-bottom: 10px;">✅ Current avatar:</p>
+                        <img src="{}" style="max-width: 400px; max-height: 400px; object-fit: contain; border: 2px solid #2196F3; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" 
+                             onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+                        <p style="display: none; color: #d32f2f; padding: 10px; background-color: #ffebee; border-radius: 4px;">
+                            ⚠️ Error loading image. File path: {}
+                        </p>
+                        <p style="color: #999; font-size: 12px; margin-top: 8px;">
+                            Avatar URL: <a href="{}" target="_blank">{}</a>
+                        </p>
+                    </div>''',
+                    obj.avatar.url,
+                    obj.avatar.url,
+                    obj.avatar.url
                 )
             except Exception as e:
-                existing = format_html('<p style="color:#d32f2f;">Error loading avatar: {}</p>', str(e))
+                existing_avatar = format_html('<p style="color: #d32f2f;">Error loading avatar: {}</p>', str(e))
         else:
-            existing = '<p style="color:#999; font-style:italic;">No avatar uploaded yet</p>'
+            existing_avatar = '<p style="color: #999; font-style: italic;">📷 No avatar uploaded yet</p>'
 
         preview_html = '''
-        <div id="avatar-preview-container" style="margin-top:10px;">{existing}
-            <div id="avatar-preview-new" style="display:none; margin-top:12px;">
-                <p style="color:#666; font-weight:bold; margin-bottom:8px;">📷 New avatar preview:</p>
-                <img id="avatar-preview-img" src="" style="max-width:400px; max-height:400px; object-fit:contain; border:2px solid #4CAF50; border-radius:8px;" />
+        <div id="avatar-preview-container" style="margin-top: 10px;">
+            {existing}
+            <div id="avatar-preview-new" style="display: none; margin-top: 15px; padding: 10px; background-color: #f9f9f9; border: 1px solid #ddd; border-radius: 8px;">
+                <p style="color: #666; font-weight: bold; margin-bottom: 10px;">📷 New avatar preview:</p>
+                <img id="avatar-preview-img" src="" style="max-width: 400px; max-height: 400px; object-fit: contain; border: 2px solid #4CAF50; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" />
             </div>
         </div>
         <script>
-        (function(){
-            function init(){
-                const input = document.querySelector('input[name="avatar"]') || document.querySelector('input[name="photo"]');
-                if(!input) return;
-                input.addEventListener('change', function(e){
-                    const f = e.target.files[0];
-                    const cont = document.getElementById('avatar-preview-new');
-                    const img = document.getElementById('avatar-preview-img');
-                    if(f && f.type.startsWith('image/')){
-                        const reader = new FileReader();
-                        reader.onload = function(ev){ img.src = ev.target.result; cont.style.display = 'block'; };
-                        reader.readAsDataURL(f);
-                    } else { cont.style.display = 'none'; }
-                });
-            }
-            if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
-        })();
+            (function() {{
+                if (document.readyState === 'loading') {{
+                    document.addEventListener('DOMContentLoaded', initAvatarPreview);
+                }} else {{
+                    initAvatarPreview();
+                }}
+
+                function initAvatarPreview() {{
+                    const avatarInput = document.querySelector('input[name="avatar"]');
+                    if (!avatarInput) {{
+                        // fallback to photo if present
+                        const other = document.querySelector('input[name="photo"]');
+                        if (other) avatarInput = other;
+                    }}
+                    if (!avatarInput) {{
+                        return;
+                    }}
+
+                    avatarInput.addEventListener('change', function(e) {{
+                        const file = e.target.files[0];
+                        const previewContainer = document.getElementById('avatar-preview-new');
+                        const previewImg = document.getElementById('avatar-preview-img');
+
+                        if (file && file.type.startsWith('image/')) {{
+                            const reader = new FileReader();
+                            reader.onload = function(ev) {{
+                                previewImg.src = ev.target.result;
+                                previewContainer.style.display = 'block';
+                            }};
+                            reader.onerror = function(ev) {{
+                                console.error('Error reading file:', ev);
+                            }};
+                            reader.readAsDataURL(file);
+                        }} else {{
+                            previewContainer.style.display = 'none';
+                            if (file) {{
+                                alert('Please select a valid image file.');
+                            }}
+                        }}
+                    }});
+
+                    // Handle clear checkbox
+                    const clearCheckbox = document.querySelector('input[name="avatar-clear"]');
+                    if (clearCheckbox) {{
+                        clearCheckbox.addEventListener('change', function(e) {{
+                            const previewContainer = document.getElementById('avatar-preview-new');
+                            if (e.target.checked) {{
+                                previewContainer.style.display = 'none';
+                            }}
+                        }});
+                    }}
+                }}
+            }})();
         </script>
         '''
 
-        return mark_safe(preview_html.format(existing=existing))
+        return mark_safe(preview_html.format(existing=existing_avatar))
     avatar_preview.short_description = 'Avatar Preview'
 
 
