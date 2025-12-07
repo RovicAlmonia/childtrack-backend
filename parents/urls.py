@@ -19,6 +19,7 @@ from .views import (
     ParentEventDetailView,
     ParentScheduleListCreateView,
     AvatarDebugView,
+    PasswordResetRequestView,
 )
 
 urlpatterns = [
@@ -56,4 +57,6 @@ urlpatterns = [
     path('schedules/', ParentScheduleListCreateView.as_view(), name='schedule-list-create'),
     # Debug endpoint to check uploaded avatar files (remove in production)
     path('debug/avatar-exists/', AvatarDebugView.as_view(), name='avatar-debug'),
+    # Password reset (mobile / frontend)
+    path('password_reset/', PasswordResetRequestView.as_view(), name='password-reset'),
 ]

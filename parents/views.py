@@ -16,6 +16,7 @@ from django.utils import timezone
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 import base64
 from django.core.files.base import ContentFile
+from django.contrib.auth.forms import PasswordResetForm
 
 from .models import Student, ParentGuardian, ParentMobileAccount, ParentNotification, ParentEvent, ParentSchedule
 
@@ -77,6 +78,33 @@ class AvatarDebugView(APIView):
             'full_path': full_path if exists else None,
             'public_url': public_url,
         })
+
+
+class PasswordResetRequestView(APIView):
+    """Public endpoint to request a password reset email.
+
+    Expects POST { "email": "user@gmail.com" } and will send the
+    Django password-reset email if the account exists. Permission: AllowAny
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email') if isinstance(request.data, dict) else None
+        if not email:
+            return Response({"error": "email is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            form = PasswordResetForm(data={"email": email})
+            if form.is_valid():
+                # use request to build absolute URLs in the email
+                form.save(request=request, use_https=request.is_secure(), from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None))
+                return Response({"message": "If that account exists we have sent a reset link to the provided email."}, status=status.HTTP_200_OK)
+            else:
+                # Don't leak whether the email exists; still return success-like message
+                return Response({"message": "If that account exists we have sent a reset link to the provided email."}, status=status.HTTP_200_OK)
+        except Exception as exc:
+            logger.exception("Password reset request failed")
+            return Response({"error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class StandardPagination(PageNumberPagination):
