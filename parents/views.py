@@ -247,7 +247,7 @@ class AuthenticatedStudentRegistrationView(APIView):
                 "message": "Registration successful!",
                 "status": "created" if created_flag else "updated",
                 "student": StudentSerializer(student).data,
-                "parents_guardians": ParentGuardianSerializer(created_records, many=True).data,
+                "parents_guardians": ParentGuardianSerializer(created_records, many=True, context={'request': request}).data,
             }
             return Response(response, status=status.HTTP_201_CREATED if created_flag else status.HTTP_200_OK)
         except ValueError as ve:
@@ -283,7 +283,7 @@ class PublicStudentRegistrationView(APIView):
                 "message": "Registration successful!",
                 "status": "created" if created_flag else "updated",
                 "student": StudentSerializer(student).data,
-                "parents_guardians": ParentGuardianSerializer(created_records, many=True).data,
+                "parents_guardians": ParentGuardianSerializer(created_records, many=True, context={'request': request}).data,
             }
             return Response(response, status=status.HTTP_201_CREATED if created_flag else status.HTTP_200_OK)
         except ValueError as ve:
@@ -478,7 +478,7 @@ class ParentsByLRNView(APIView):
         try:
             student = Student.objects.get(lrn=lrn)
             parents = ParentGuardian.objects.filter(student=student)
-            serializer = ParentGuardianSerializer(parents, many=True)
+            serializer = ParentGuardianSerializer(parents, many=True, context={'request': request})
             return Response({
                 "student": StudentSerializer(student).data,
                 "parents_guardians": serializer.data
@@ -537,10 +537,6 @@ class ParentLoginView(APIView):
         if not username or not password:
             return Response({"error": "Username and password are required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            pg = ParentGuardian.objects.get(username=username)
-        except ParentGuardian.DoesNotExist:
-            return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
         # Support both hashed and legacy-plaintext passwords.
         valid = False
@@ -562,7 +558,7 @@ class ParentLoginView(APIView):
         if not valid:
             return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
-        serializer = ParentGuardianSerializer(pg)
+        serializer = ParentGuardianSerializer(pg, context={'request': request})
         return Response({"parent": serializer.data}, status=status.HTTP_200_OK)
 
 
