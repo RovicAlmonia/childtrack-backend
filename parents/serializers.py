@@ -42,7 +42,7 @@ class ParentGuardianSerializer(serializers.ModelSerializer):
     must_change_credentials = serializers.BooleanField(read_only=True)
     # Raw ImageField for uploads
     avatar = serializers.ImageField(required=False, allow_null=True)
-    # Public URL for the avatar (absolute URL when request context provided)
+    # Public URL for the avatar (always returns full Cloudinary URL)
     avatar_url = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -76,14 +76,12 @@ class ParentGuardianSerializer(serializers.ModelSerializer):
         return hasattr(obj, 'mobile_account')
 
     def get_avatar_url(self, obj):
-        """Return full absolute URL for the avatar if available."""
+        """Return the Cloudinary URL directly from avatar.url if available."""
         if not obj.avatar:
             return None
-        request = self.context.get('request')
         try:
-            # If we have request in context, build absolute URI
-            if request:
-                return request.build_absolute_uri(obj.avatar.url)
+            # When using Cloudinary storage, avatar.url returns the full Cloudinary URL
+            # No need to build_absolute_uri - just return it directly
             return obj.avatar.url
         except Exception:
             return None
