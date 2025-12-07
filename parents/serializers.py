@@ -41,8 +41,9 @@ class ParentGuardianSerializer(serializers.ModelSerializer):
     # Never include stored password in API responses. Accept password on input only.
     password = serializers.CharField(max_length=100, required=False, allow_blank=True, write_only=True)
     must_change_credentials = serializers.BooleanField(read_only=True)
-    # Raw ImageField for uploads
-    avatar = serializers.ImageField(required=False, allow_null=True)
+    # Raw ImageField for uploads (write-only). Clients should upload to `avatar`;
+    # API responses will expose `avatar_url` (absolute URL) instead of raw field data.
+    avatar = serializers.ImageField(required=False, allow_null=True, write_only=True)
     # Public URL for the avatar (absolute URL when request context provided)
     avatar_url = serializers.SerializerMethodField(read_only=True)
 
