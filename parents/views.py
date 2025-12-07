@@ -33,6 +33,8 @@ from .serializers import (
     ParentScheduleSerializer,
 )
 
+from django.shortcuts import redirect
+
 logger = logging.getLogger(__name__)
 
 import traceback
@@ -77,6 +79,53 @@ class AvatarDebugView(APIView):
             'full_path': full_path if exists else None,
             'public_url': public_url,
         })
+
+
+class AvatarRedirectView(APIView):
+    """Redirect to a parent's avatar URL (absolute or built from MEDIA_URL).
+
+    This allows admin links or other UIs to point to a stable endpoint like
+    `/api/parents/avatar/<pk>/` which will redirect to the actual image URL.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, pk):
+        try:
+            parent = ParentGuardian.objects.get(pk=pk)
+        except ParentGuardian.DoesNotExist:
+            return Response({'error': 'Parent not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        if not getattr(parent, 'avatar', None):
+            return Response({'error': 'No avatar for this parent'}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            avatar_url = parent.avatar.url
+        except Exception:
+            avatar_url = None
+
+        # If avatar_url is absolute, redirect directly
+        if avatar_url and isinstance(avatar_url, str) and avatar_url.startswith('http'):
+            return redirect(avatar_url)
+
+        # Try to build absolute URI using request
+        try:
+            if avatar_url:
+                return redirect(request.build_absolute_uri(avatar_url))
+        except Exception:
+            pass
+
+        # Fallback: build from MEDIA_URL + file name
+        try:
+            media_url = getattr(settings, 'MEDIA_URL', '/media/')
+            file_name = parent.avatar.name if getattr(parent.avatar, 'name', None) else None
+            if file_name:
+                if media_url.startswith('http'):
+                    return redirect(f"{media_url.rstrip('/')}/{file_name}")
+                return redirect(request.build_absolute_uri(f"{media_url.rstrip('/')}/{file_name}"))
+        except Exception:
+            pass
+
+        return Response({'error': 'Unable to determine avatar URL'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class StandardPagination(PageNumberPagination):

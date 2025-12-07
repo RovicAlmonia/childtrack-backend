@@ -92,11 +92,19 @@ class ParentGuardianAdmin(admin.ModelAdmin):
 
         if getattr(obj, 'avatar', None):
             try:
+                # Link to the new redirect endpoint so clicks always open the image
+                try:
+                    avatar_link = f"/api/parents/avatar/{obj.id}/"
+                    display_url = obj.avatar.url if getattr(obj, 'avatar', None) else avatar_link
+                except Exception:
+                    avatar_link = f"/api/parents/avatar/{obj.id}/"
+                    display_url = avatar_link
+
                 existing = format_html(
                     '<div style="margin-bottom:12px;"><p style="color:#666; font-weight:bold;">Current avatar:</p>'
                     '<img src="{}" style="max-width:400px; max-height:400px; object-fit:contain; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.1);" />'
                     '<p style="color:#999; font-size:12px; margin-top:8px;">URL: <a href="{}" target="_blank">{}</a></p></div>',
-                    obj.avatar.url, obj.avatar.url, obj.avatar.url
+                    avatar_link, avatar_link, display_url
                 )
             except Exception as e:
                 existing = format_html('<p style="color:#d32f2f;">Error loading avatar: {}</p>', str(e))
