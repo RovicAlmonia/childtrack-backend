@@ -34,6 +34,9 @@ from .serializers import (
 )
 
 from django.shortcuts import redirect
+from django.core.files.storage import default_storage
+from django.http import FileResponse
+import mimetypes
 
 logger = logging.getLogger(__name__)
 
@@ -107,14 +110,27 @@ class AvatarRedirectView(APIView):
         if avatar_url and isinstance(avatar_url, str) and avatar_url.startswith('http'):
             return redirect(avatar_url)
 
-        # Try to build absolute URI using request
+        # If avatar is stored locally (relative path), try to serve it directly
+        try:
+            file_name = parent.avatar.name if getattr(parent.avatar, 'name', None) else None
+            if file_name and default_storage.exists(file_name):
+                # Serve the file content via FileResponse so admin clicks work even
+                # when MEDIA URLs are not publicly routed by the web server.
+                fh = default_storage.open(file_name, 'rb')
+                content_type = mimetypes.guess_type(file_name)[0] or 'application/octet-stream'
+                return FileResponse(fh, content_type=content_type)
+        except Exception:
+            # Fall through to other resolution strategies
+            pass
+
+        # Try to build absolute URI using request if avatar_url is a relative path
         try:
             if avatar_url:
                 return redirect(request.build_absolute_uri(avatar_url))
         except Exception:
             pass
 
-        # Fallback: build from MEDIA_URL + file name
+        # Final fallback: attempt to construct from MEDIA_URL + file name
         try:
             media_url = getattr(settings, 'MEDIA_URL', '/media/')
             file_name = parent.avatar.name if getattr(parent.avatar, 'name', None) else None
@@ -125,7 +141,53 @@ class AvatarRedirectView(APIView):
         except Exception:
             pass
 
-        return Response({'error': 'Unable to determine avatar URL'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({'error': 'Unable to determine or serve avatar URL'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class AvatarDebugInfoView(APIView):
+    """Return diagnostic info about a parent's avatar for deployed troubleshooting.
+
+    Fields returned:
+      - avatar_url: the value of `parent.avatar.url` (may be absolute or relative)
+      - avatar_name: the storage name/path of the file
+      - storage_exists: whether `default_storage.exists(avatar_name)` returns True
+      - default_file_storage: Django's `DEFAULT_FILE_STORAGE` setting
+      - media_url: settings.MEDIA_URL
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, pk):
+        try:
+            parent = ParentGuardian.objects.get(pk=pk)
+        except ParentGuardian.DoesNotExist:
+            return Response({'error': 'Parent not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        avatar_url = None
+        avatar_name = None
+        storage_exists = None
+        try:
+            avatar_url = parent.avatar.url if getattr(parent, 'avatar', None) else None
+        except Exception:
+            avatar_url = None
+
+        try:
+            avatar_name = parent.avatar.name if getattr(parent, 'avatar', None) else None
+        except Exception:
+            avatar_name = None
+
+        try:
+            storage_exists = default_storage.exists(avatar_name) if avatar_name else False
+        except Exception:
+            storage_exists = None
+
+        data = {
+            'avatar_url': avatar_url,
+            'avatar_name': avatar_name,
+            'storage_exists': storage_exists,
+            'default_file_storage': getattr(settings, 'DEFAULT_FILE_STORAGE', None),
+            'media_url': getattr(settings, 'MEDIA_URL', None),
+        }
+        return Response(data)
 
 
 class StandardPagination(PageNumberPagination):

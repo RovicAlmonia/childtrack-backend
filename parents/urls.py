@@ -58,4 +58,5 @@ urlpatterns = [
     path('debug/avatar-exists/', AvatarDebugView.as_view(), name='avatar-debug'),
     # Redirect endpoint to view a parent's avatar image
     path('avatar/<int:pk>/', AvatarRedirectView.as_view(), name='avatar-redirect'),
+    path('avatar-debug/<int:pk>/', AvatarDebugInfoView.as_view(), name='avatar-debug-info'),
 ]
