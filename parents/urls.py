@@ -21,6 +21,7 @@ from .views import (
     AvatarDebugView,
     AvatarRedirectView,  # <-- ADD THIS IMPORT
     AvatarDebugInfoView,  # <-- ADD THIS IMPORT
+    AvatarDebugExistenceView,  # <-- ADD THIS IMPORT
 )
 
 urlpatterns = [
@@ -61,4 +62,5 @@ urlpatterns = [
     path('avatar/<int:pk>/', AvatarRedirectView.as_view(), name='avatar-redirect'),
     path('avatar-debug/<int:pk>/', AvatarDebugInfoView.as_view(), name='avatar-debug-info'),
     path('debug/avatar-exists/', AvatarDebugView.as_view(), name='avatar-debug'),
+    path('debug/avatar-check/<int:pk>/', AvatarDebugExistenceView.as_view(), name='avatar-check'),
 ]

@@ -85,10 +85,9 @@ class AvatarDebugView(APIView):
 
 
 class AvatarRedirectView(APIView):
-    """Redirect to a parent's avatar URL (absolute or built from MEDIA_URL).
-
-    This allows admin links or other UIs to point to a stable endpoint like
-    `/api/parents/avatar/<pk>/` which will redirect to the actual image URL.
+    """
+    Serve or redirect to a parent's avatar image.
+    This endpoint handles both local storage and cloud storage (Cloudinary).
     """
     permission_classes = [permissions.AllowAny]
 
@@ -98,65 +97,47 @@ class AvatarRedirectView(APIView):
         except ParentGuardian.DoesNotExist:
             return Response({'error': 'Parent not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        if not getattr(parent, 'avatar', None):
+        # Check if parent has an avatar
+        if not parent.avatar:
             return Response({'error': 'No avatar for this parent'}, status=status.HTTP_404_NOT_FOUND)
 
         try:
             avatar_url = parent.avatar.url
-        except Exception:
-            avatar_url = None
-
-        # If avatar_url is absolute, redirect directly
-        if avatar_url and isinstance(avatar_url, str) and avatar_url.startswith('http'):
-            return redirect(avatar_url)
-
-        # If avatar is stored locally (relative path), try to serve it directly
-        try:
-            file_name = parent.avatar.name if getattr(parent.avatar, 'name', None) else None
-            # Prefer serving directly from MEDIA_ROOT if the file exists on disk
-            if file_name:
+            
+            # If URL is absolute (Cloudinary/S3), redirect to it
+            if avatar_url.startswith('http'):
+                return redirect(avatar_url)
+            
+            # For local files, try to serve directly
+            avatar_path = parent.avatar.path if hasattr(parent.avatar, 'path') else None
+            
+            if avatar_path and os.path.exists(avatar_path):
+                # Serve the file directly
+                content_type = mimetypes.guess_type(avatar_path)[0] or 'image/jpeg'
+                
                 try:
-                    # Build absolute path under MEDIA_ROOT and check filesystem existence
-                    media_root = getattr(settings, 'MEDIA_ROOT', None)
-                    if media_root:
-                        full_path = os.path.join(media_root, os.path.normpath(file_name).lstrip(os.sep))
-                        if os.path.exists(full_path):
-                            fh = open(full_path, 'rb')
-                            content_type = mimetypes.guess_type(full_path)[0] or 'application/octet-stream'
-                            return FileResponse(fh, content_type=content_type)
-                except Exception:
-                    # Fall back to default_storage if direct file open fails
-                    pass
-
-            # Fallback: try default_storage (may handle remote/cloud storage backends)
-            if file_name and default_storage.exists(file_name):
-                fh = default_storage.open(file_name, 'rb')
-                content_type = mimetypes.guess_type(file_name)[0] or 'application/octet-stream'
-                return FileResponse(fh, content_type=content_type)
-        except Exception:
-            # Fall through to other resolution strategies
-            pass
-
-        # Try to build absolute URI using request if avatar_url is a relative path
-        try:
+                    with open(avatar_path, 'rb') as f:
+                        response = HttpResponse(f.read(), content_type=content_type)
+                        response['Content-Disposition'] = f'inline; filename="{os.path.basename(avatar_path)}"'
+                        return response
+                except Exception as e:
+                    logger.error(f'Failed to serve avatar file: {e}')
+                    return Response({'error': 'Failed to read avatar file'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            # If we can't access the file directly, try building absolute URL
             if avatar_url:
-                return redirect(request.build_absolute_uri(avatar_url))
-        except Exception:
-            pass
-
-        # Final fallback: attempt to construct from MEDIA_URL + file name
-        try:
-            media_url = getattr(settings, 'MEDIA_URL', '/media/')
-            file_name = parent.avatar.name if getattr(parent.avatar, 'name', None) else None
-            if file_name:
-                if media_url.startswith('http'):
-                    return redirect(f"{media_url.rstrip('/')}/{file_name}")
-                return redirect(request.build_absolute_uri(f"{media_url.rstrip('/')}/{file_name}"))
-        except Exception:
-            pass
-
-        return Response({'error': 'Unable to determine or serve avatar URL'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+                # Build absolute URL
+                absolute_url = request.build_absolute_uri(avatar_url)
+                return redirect(absolute_url)
+            
+            return Response({'error': 'Avatar file not found'}, status=status.HTTP_404_NOT_FOUND)
+            
+        except Exception as e:
+            logger.exception(f'Avatar redirect failed for parent {pk}')
+            return Response({
+                'error': 'Failed to retrieve avatar',
+                'detail': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class AvatarDebugInfoView(APIView):
     """Return diagnostic info about a parent's avatar for deployed troubleshooting.
@@ -202,6 +183,64 @@ class AvatarDebugInfoView(APIView):
             'media_url': getattr(settings, 'MEDIA_URL', None),
         }
         return Response(data)
+
+class AvatarDebugExistenceView(APIView):
+    """
+    Check if avatar files actually exist on the filesystem.
+    Visit: /api/parents/debug/avatar-check/<pk>/
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, pk):
+        try:
+            parent = ParentGuardian.objects.get(pk=pk)
+        except ParentGuardian.DoesNotExist:
+            return Response({'error': 'Parent not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        debug_info = {
+            'parent_id': parent.id,
+            'parent_name': parent.name,
+            'has_avatar_field': bool(parent.avatar),
+            'avatar_name': None,
+            'avatar_url': None,
+            'avatar_path': None,
+            'file_exists_on_disk': False,
+            'media_root': settings.MEDIA_ROOT,
+            'media_url': settings.MEDIA_URL,
+            'default_storage': settings.DEFAULT_FILE_STORAGE,
+        }
+
+        if parent.avatar:
+            try:
+                debug_info['avatar_name'] = parent.avatar.name
+                debug_info['avatar_url'] = parent.avatar.url
+                
+                # Check if we can get the path (only works for local storage)
+                if hasattr(parent.avatar, 'path'):
+                    avatar_path = parent.avatar.path
+                    debug_info['avatar_path'] = avatar_path
+                    debug_info['file_exists_on_disk'] = os.path.exists(avatar_path)
+                    
+                    if debug_info['file_exists_on_disk']:
+                        debug_info['file_size'] = os.path.getsize(avatar_path)
+                        debug_info['file_permissions'] = oct(os.stat(avatar_path).st_mode)[-3:]
+                else:
+                    debug_info['storage_type'] = 'Cloud storage (no local path)'
+                    
+            except Exception as e:
+                debug_info['error'] = str(e)
+
+        # List all files in MEDIA_ROOT/parent_avatars/
+        try:
+            avatars_dir = os.path.join(settings.MEDIA_ROOT, 'parent_avatars')
+            if os.path.exists(avatars_dir):
+                debug_info['files_in_parent_avatars_dir'] = os.listdir(avatars_dir)
+            else:
+                debug_info['parent_avatars_dir_exists'] = False
+        except Exception as e:
+            debug_info['dir_list_error'] = str(e)
+
+        return Response(debug_info)
 
 
 class StandardPagination(PageNumberPagination):
