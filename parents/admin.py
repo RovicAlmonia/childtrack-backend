@@ -93,19 +93,20 @@ class ParentGuardianAdmin(admin.ModelAdmin):
             try:
                 existing_avatar = format_html(
                     '''<div style="margin-bottom: 15px;">
-                        <p style="color: #666; font-weight: bold; margin-bottom: 10px;">✅ Current avatar:</p>
-                        <img src="{}" style="max-width: 400px; max-height: 400px; object-fit: contain; border: 2px solid #2196F3; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" 
-                             onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
-                        <p style="display: none; color: #d32f2f; padding: 10px; background-color: #ffebee; border-radius: 4px;">
-                            ⚠️ Error loading image. File path: {}
-                        </p>
-                        <p style="color: #999; font-size: 12px; margin-top: 8px;">
-                            Avatar URL: <a href="{}" target="_blank">{}</a>
-                        </p>
-                    </div>''',
-                    obj.avatar.url,
-                    obj.avatar.url,
-                    obj.avatar.url
+                            <p style="color: #666; font-weight: bold; margin-bottom: 10px;">✅ Current avatar:</p>
+                            <img src="{}" style="max-width: 400px; max-height: 400px; object-fit: contain; border: 2px solid #2196F3; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" 
+                                 onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+                            <p style="display: none; color: #d32f2f; padding: 10px; background-color: #ffebee; border-radius: 4px;">
+                                ⚠️ Error loading image. File path: {}
+                            </p>
+                            <p style="color: #999; font-size: 12px; margin-top: 8px;">
+                                Avatar URL: <a href="{}" target="_blank">{}</a>
+                            </p>
+                        </div>''',
+                        obj.avatar.url,
+                        obj.avatar.url,
+                        obj.avatar.url,
+                        obj.avatar.url
                 )
             except Exception as e:
                 existing_avatar = format_html('<p style="color: #d32f2f;">Error loading avatar: {}</p>', str(e))
