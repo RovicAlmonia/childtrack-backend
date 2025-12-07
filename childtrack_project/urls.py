@@ -15,6 +15,11 @@ urlpatterns = [
     path('api/schedule/', ParentScheduleListCreateView.as_view(), name='schedule'),
 ]
 
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+# In development `static()` is only added when DEBUG is True. On some deployments
+# (like Render) media files may still be stored on the instance filesystem and
+# need to be served while you move to a proper production storage solution.
+# Add MEDIA serving unconditionally as a temporary measure so uploaded avatars
+# under `/media/` are reachable. Replace with Cloudinary/S3-backed storage
+# for a production-safe solution.
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
