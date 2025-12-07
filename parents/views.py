@@ -113,9 +113,23 @@ class AvatarRedirectView(APIView):
         # If avatar is stored locally (relative path), try to serve it directly
         try:
             file_name = parent.avatar.name if getattr(parent.avatar, 'name', None) else None
+            # Prefer serving directly from MEDIA_ROOT if the file exists on disk
+            if file_name:
+                try:
+                    # Build absolute path under MEDIA_ROOT and check filesystem existence
+                    media_root = getattr(settings, 'MEDIA_ROOT', None)
+                    if media_root:
+                        full_path = os.path.join(media_root, os.path.normpath(file_name).lstrip(os.sep))
+                        if os.path.exists(full_path):
+                            fh = open(full_path, 'rb')
+                            content_type = mimetypes.guess_type(full_path)[0] or 'application/octet-stream'
+                            return FileResponse(fh, content_type=content_type)
+                except Exception:
+                    # Fall back to default_storage if direct file open fails
+                    pass
+
+            # Fallback: try default_storage (may handle remote/cloud storage backends)
             if file_name and default_storage.exists(file_name):
-                # Serve the file content via FileResponse so admin clicks work even
-                # when MEDIA URLs are not publicly routed by the web server.
                 fh = default_storage.open(file_name, 'rb')
                 content_type = mimetypes.guess_type(file_name)[0] or 'application/octet-stream'
                 return FileResponse(fh, content_type=content_type)
