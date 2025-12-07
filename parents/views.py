@@ -3,7 +3,6 @@ import json
 from django.db import transaction
 from django.db.models import Prefetch, Q
 from django.contrib.auth import authenticate
-from django.contrib.auth.hashers import check_password, make_password
 from django.conf import settings
 import os
 from rest_framework import permissions, status
@@ -16,7 +15,6 @@ from django.utils import timezone
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 import base64
 from django.core.files.base import ContentFile
-from django.contrib.auth.forms import PasswordResetForm
 
 from .models import Student, ParentGuardian, ParentMobileAccount, ParentNotification, ParentEvent, ParentSchedule
 
@@ -78,33 +76,6 @@ class AvatarDebugView(APIView):
             'full_path': full_path if exists else None,
             'public_url': public_url,
         })
-
-
-class PasswordResetRequestView(APIView):
-    """Public endpoint to request a password reset email.
-
-    Expects POST { "email": "user@gmail.com" } and will send the
-    Django password-reset email if the account exists. Permission: AllowAny
-    """
-    permission_classes = [permissions.AllowAny]
-
-    def post(self, request):
-        email = request.data.get('email') if isinstance(request.data, dict) else None
-        if not email:
-            return Response({"error": "email is required"}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            form = PasswordResetForm(data={"email": email})
-            if form.is_valid():
-                # use request to build absolute URLs in the email
-                form.save(request=request, use_https=request.is_secure(), from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None))
-                return Response({"message": "If that account exists we have sent a reset link to the provided email."}, status=status.HTTP_200_OK)
-            else:
-                # Don't leak whether the email exists; still return success-like message
-                return Response({"message": "If that account exists we have sent a reset link to the provided email."}, status=status.HTTP_200_OK)
-        except Exception as exc:
-            logger.exception("Password reset request failed")
-            return Response({"error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class StandardPagination(PageNumberPagination):
@@ -247,7 +218,7 @@ class AuthenticatedStudentRegistrationView(APIView):
                 "message": "Registration successful!",
                 "status": "created" if created_flag else "updated",
                 "student": StudentSerializer(student).data,
-                "parents_guardians": ParentGuardianSerializer(created_records, many=True, context={'request': request}).data,
+                "parents_guardians": ParentGuardianSerializer(created_records, many=True).data,
             }
             return Response(response, status=status.HTTP_201_CREATED if created_flag else status.HTTP_200_OK)
         except ValueError as ve:
@@ -283,7 +254,7 @@ class PublicStudentRegistrationView(APIView):
                 "message": "Registration successful!",
                 "status": "created" if created_flag else "updated",
                 "student": StudentSerializer(student).data,
-                "parents_guardians": ParentGuardianSerializer(created_records, many=True, context={'request': request}).data,
+                "parents_guardians": ParentGuardianSerializer(created_records, many=True).data,
             }
             return Response(response, status=status.HTTP_201_CREATED if created_flag else status.HTTP_200_OK)
         except ValueError as ve:
@@ -339,13 +310,7 @@ class ParentGuardianListView(APIView):
     Get parents/guardians for authenticated teacher, optionally filtered by LRN (paginated).
     /api/parents/parents/?lrn=<lrn>
     """
-    # Allow unauthenticated GET (for mobile clients) but require authentication
-    # for other methods (future-proofing for create/update if added).
-    # Note: REST_FRAMEWORK default permission is strict; override per-method below.
-    def get_permissions(self):
-        if self.request.method == 'GET':
-            return [permissions.AllowAny()]
-        return [permissions.IsAuthenticated()]
+    permission_classes = [permissions.IsAuthenticated]
     pagination_class = StandardPagination
 
     def get(self, request):
@@ -484,7 +449,7 @@ class ParentsByLRNView(APIView):
         try:
             student = Student.objects.get(lrn=lrn)
             parents = ParentGuardian.objects.filter(student=student)
-            serializer = ParentGuardianSerializer(parents, many=True, context={'request': request})
+            serializer = ParentGuardianSerializer(parents, many=True)
             return Response({
                 "student": StudentSerializer(student).data,
                 "parents_guardians": serializer.data
@@ -542,49 +507,18 @@ class ParentLoginView(APIView):
 
         if not username or not password:
             return Response({"error": "Username and password are required"}, status=status.HTTP_400_BAD_REQUEST)
-        # Lookup the ParentGuardian record by username
+
         try:
             pg = ParentGuardian.objects.get(username=username)
         except ParentGuardian.DoesNotExist:
             return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Support both hashed and legacy-plaintext passwords.
-        valid = False
-        try:
-            if pg.password and check_password(password, pg.password):
-                valid = True
-            elif (pg.password or "") == password:
-                # Legacy plaintext match: upgrade to hashed password on successful login
-                pg.password = make_password(password)
-                pg.save(update_fields=['password'])
-                valid = True
-        except Exception:
-            # In case check_password/identify fails, fall back to plaintext compare
-            if (pg.password or "") == password:
-                pg.password = make_password(password)
-                pg.save(update_fields=['password'])
-                valid = True
-
-        if not valid:
+        # Passwords are stored in plaintext in this model (per project choice)
+        if (pg.password or "") != password:
             return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Try to serialize with request context so avatar_url is absolute.
-        # If serialization fails for any reason, fall back to serializing
-        # without the request context to avoid returning HTTP 500 to clients.
-        try:
-            serializer = ParentGuardianSerializer(pg, context={'request': request})
-            parent_data = serializer.data
-        except Exception:
-            logger.exception('ParentLoginView: serializer with request context failed')
-            try:
-                serializer = ParentGuardianSerializer(pg)
-                parent_data = serializer.data
-            except Exception:
-                # Last-resort: return minimal info to avoid exposing internals
-                logger.exception('ParentLoginView: fallback serializer also failed')
-                return Response({"error": "Server error while preparing response"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        return Response({"parent": parent_data}, status=status.HTTP_200_OK)
+        serializer = ParentGuardianSerializer(pg)
+        return Response({"parent": serializer.data}, status=status.HTTP_200_OK)
 
 
 class ParentDetailView(APIView):
@@ -629,12 +563,13 @@ class ParentDetailView(APIView):
         if 'password' in data:
             new_pw = data.get('password')
             current_pw = data.get('current_password')
-
+            
             # If this parent record is flagged as requiring credential change on first login,
             # allow changing the password without providing the current_password. This supports
             # the mobile first-login flow where temporary credentials were auto-generated.
             if orig_must:
-                parent.password = make_password(str(new_pw))
+                # For forced changes, accept any password without current_password verification
+                parent.password = str(new_pw)
                 updated = True
                 changed_password = True
                 logger.info(f"Password changed for parent {parent.id} during forced credential update")
@@ -642,31 +577,13 @@ class ParentDetailView(APIView):
                 # For voluntary changes, require current password
                 if not current_pw:
                     return Response({'error': 'current_password is required to change password.'}, status=status.HTTP_400_BAD_REQUEST)
-
-                # Support both hashed and legacy-plaintext stored passwords
-                try:
-                    if parent.password and check_password(str(current_pw), parent.password):
-                        parent.password = make_password(str(new_pw))
-                        updated = True
-                        changed_password = True
-                        logger.info(f"Password changed for parent {parent.id} via voluntary update (hashed match)")
-                    elif (parent.password or '') == str(current_pw):
-                        # Legacy plaintext match: accept and upgrade stored password
-                        parent.password = make_password(str(new_pw))
-                        updated = True
-                        changed_password = True
-                        logger.info(f"Password changed for parent {parent.id} via voluntary update (plaintext match)")
-                    else:
-                        return Response({'error': 'Current password is incorrect.'}, status=status.HTTP_401_UNAUTHORIZED)
-                except Exception:
-                    # Fallback to plaintext compare if hashing utilities fail
-                    if (parent.password or '') == str(current_pw):
-                        parent.password = make_password(str(new_pw))
-                        updated = True
-                        changed_password = True
-                        logger.info(f"Password changed for parent {parent.id} via voluntary update (fallback)")
-                    else:
-                        return Response({'error': 'Current password is incorrect.'}, status=status.HTTP_401_UNAUTHORIZED)
+                # simple plain-text compare (project currently stores plain passwords)
+                if (parent.password or '') != str(current_pw):
+                    return Response({'error': 'Current password is incorrect.'}, status=status.HTTP_401_UNAUTHORIZED)
+                parent.password = str(new_pw)
+                updated = True
+                changed_password = True
+                logger.info(f"Password changed for parent {parent.id} via voluntary update")
 
         # Handle other fields
         for field in ('name', 'username', 'contact_number', 'address', 'email'):
@@ -740,11 +657,6 @@ class ParentDetailView(APIView):
         
         # Return serializer data at top-level (keeps previous client expectations) and include debug info
         response_data = dict(serializer.data)
-        # Ensure a top-level `avatar_url` exists for clients that expect it
-        try:
-            response_data['avatar_url'] = serializer.data.get('avatar_url')
-        except Exception:
-            response_data['avatar_url'] = None
         response_data['debug'] = debug_info
         return Response(response_data)
 
