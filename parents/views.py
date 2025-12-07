@@ -3,6 +3,7 @@ import json
 from django.db import transaction
 from django.db.models import Prefetch, Q
 from django.contrib.auth import authenticate
+from django.contrib.auth.hashers import check_password, make_password
 from django.conf import settings
 import os
 from rest_framework import permissions, status
@@ -15,7 +16,6 @@ from django.utils import timezone
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 import base64
 from django.core.files.base import ContentFile
-from django.contrib.auth.hashers import check_password, make_password, identify_hasher
 
 from .models import Student, ParentGuardian, ParentMobileAccount, ParentNotification, ParentEvent, ParentSchedule
 
@@ -32,11 +32,6 @@ from .serializers import (
     ParentEventSerializer,
     ParentScheduleSerializer,
 )
-
-from django.shortcuts import redirect
-from django.core.files.storage import default_storage
-from django.http import FileResponse, HttpResponse
-import mimetypes
 
 logger = logging.getLogger(__name__)
 
@@ -82,165 +77,6 @@ class AvatarDebugView(APIView):
             'full_path': full_path if exists else None,
             'public_url': public_url,
         })
-
-
-class AvatarRedirectView(APIView):
-    """
-    Serve or redirect to a parent's avatar image.
-    This endpoint handles both local storage and cloud storage (Cloudinary).
-    """
-    permission_classes = [permissions.AllowAny]
-
-    def get(self, request, pk):
-        try:
-            parent = ParentGuardian.objects.get(pk=pk)
-        except ParentGuardian.DoesNotExist:
-            return Response({'error': 'Parent not found'}, status=status.HTTP_404_NOT_FOUND)
-
-        # Check if parent has an avatar
-        if not parent.avatar:
-            return Response({'error': 'No avatar for this parent'}, status=status.HTTP_404_NOT_FOUND)
-
-        try:
-            avatar_url = parent.avatar.url
-            
-            # If URL is absolute (Cloudinary/S3), redirect to it
-            if avatar_url.startswith('http'):
-                return redirect(avatar_url)
-            
-            # For local files, try to serve directly
-            avatar_path = parent.avatar.path if hasattr(parent.avatar, 'path') else None
-            
-            if avatar_path and os.path.exists(avatar_path):
-                # Serve the file directly
-                content_type = mimetypes.guess_type(avatar_path)[0] or 'image/jpeg'
-                
-                try:
-                    with open(avatar_path, 'rb') as f:
-                        response = HttpResponse(f.read(), content_type=content_type)
-                        response['Content-Disposition'] = f'inline; filename="{os.path.basename(avatar_path)}"'
-                        return response
-                except Exception as e:
-                    logger.error(f'Failed to serve avatar file: {e}')
-                    return Response({'error': 'Failed to read avatar file'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            
-            # If we can't access the file directly, try building absolute URL
-            if avatar_url:
-                # Build absolute URL
-                absolute_url = request.build_absolute_uri(avatar_url)
-                return redirect(absolute_url)
-            
-            return Response({'error': 'Avatar file not found'}, status=status.HTTP_404_NOT_FOUND)
-            
-        except Exception as e:
-            logger.exception(f'Avatar redirect failed for parent {pk}')
-            return Response({
-                'error': 'Failed to retrieve avatar',
-                'detail': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-class AvatarDebugInfoView(APIView):
-    """Return diagnostic info about a parent's avatar for deployed troubleshooting.
-
-    Fields returned:
-      - avatar_url: the value of `parent.avatar.url` (may be absolute or relative)
-      - avatar_name: the storage name/path of the file
-      - storage_exists: whether `default_storage.exists(avatar_name)` returns True
-      - default_file_storage: Django's `DEFAULT_FILE_STORAGE` setting
-      - media_url: settings.MEDIA_URL
-    """
-    permission_classes = [permissions.AllowAny]
-
-    def get(self, request, pk):
-        try:
-            parent = ParentGuardian.objects.get(pk=pk)
-        except ParentGuardian.DoesNotExist:
-            return Response({'error': 'Parent not found'}, status=status.HTTP_404_NOT_FOUND)
-
-        avatar_url = None
-        avatar_name = None
-        storage_exists = None
-        try:
-            avatar_url = parent.avatar.url if getattr(parent, 'avatar', None) else None
-        except Exception:
-            avatar_url = None
-
-        try:
-            avatar_name = parent.avatar.name if getattr(parent, 'avatar', None) else None
-        except Exception:
-            avatar_name = None
-
-        try:
-            storage_exists = default_storage.exists(avatar_name) if avatar_name else False
-        except Exception:
-            storage_exists = None
-
-        data = {
-            'avatar_url': avatar_url,
-            'avatar_name': avatar_name,
-            'storage_exists': storage_exists,
-            'default_file_storage': getattr(settings, 'DEFAULT_FILE_STORAGE', None),
-            'media_url': getattr(settings, 'MEDIA_URL', None),
-        }
-        return Response(data)
-
-class AvatarDebugExistenceView(APIView):
-    """
-    Check if avatar files actually exist on the filesystem.
-    Visit: /api/parents/debug/avatar-check/<pk>/
-    """
-    permission_classes = [permissions.AllowAny]
-
-    def get(self, request, pk):
-        try:
-            parent = ParentGuardian.objects.get(pk=pk)
-        except ParentGuardian.DoesNotExist:
-            return Response({'error': 'Parent not found'}, status=status.HTTP_404_NOT_FOUND)
-
-        debug_info = {
-            'parent_id': parent.id,
-            'parent_name': parent.name,
-            'has_avatar_field': bool(parent.avatar),
-            'avatar_name': None,
-            'avatar_url': None,
-            'avatar_path': None,
-            'file_exists_on_disk': False,
-            'media_root': settings.MEDIA_ROOT,
-            'media_url': settings.MEDIA_URL,
-            'default_storage': settings.DEFAULT_FILE_STORAGE,
-        }
-
-        if parent.avatar:
-            try:
-                debug_info['avatar_name'] = parent.avatar.name
-                debug_info['avatar_url'] = parent.avatar.url
-                
-                # Check if we can get the path (only works for local storage)
-                if hasattr(parent.avatar, 'path'):
-                    avatar_path = parent.avatar.path
-                    debug_info['avatar_path'] = avatar_path
-                    debug_info['file_exists_on_disk'] = os.path.exists(avatar_path)
-                    
-                    if debug_info['file_exists_on_disk']:
-                        debug_info['file_size'] = os.path.getsize(avatar_path)
-                        debug_info['file_permissions'] = oct(os.stat(avatar_path).st_mode)[-3:]
-                else:
-                    debug_info['storage_type'] = 'Cloud storage (no local path)'
-                    
-            except Exception as e:
-                debug_info['error'] = str(e)
-
-        # List all files in MEDIA_ROOT/parent_avatars/
-        try:
-            avatars_dir = os.path.join(settings.MEDIA_ROOT, 'parent_avatars')
-            if os.path.exists(avatars_dir):
-                debug_info['files_in_parent_avatars_dir'] = os.listdir(avatars_dir)
-            else:
-                debug_info['parent_avatars_dir_exists'] = False
-        except Exception as e:
-            debug_info['dir_list_error'] = str(e)
-
-        return Response(debug_info)
 
 
 class StandardPagination(PageNumberPagination):
@@ -678,27 +514,22 @@ class ParentLoginView(APIView):
         except ParentGuardian.DoesNotExist:
             return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
-        stored = pg.password or ''
-        # Determine if stored password is hashed
-        try:
-            identify_hasher(stored)
-            stored_hashed = True
-        except Exception:
-            stored_hashed = False
-
+        # Support both hashed and legacy-plaintext passwords.
         valid = False
-        if stored_hashed:
-            valid = check_password(password, stored)
-        else:
-            # fallback for legacy plain-text passwords: allow login and migrate to hashed
-            if stored == password:
+        try:
+            if pg.password and check_password(password, pg.password):
                 valid = True
-                try:
-                    pg.password = make_password(password)
-                    pg.save(update_fields=['password'])
-                except Exception:
-                    # best-effort migration; continue even if migration fails
-                    pass
+            elif (pg.password or "") == password:
+                # Legacy plaintext match: upgrade to hashed password on successful login
+                pg.password = make_password(password)
+                pg.save(update_fields=['password'])
+                valid = True
+        except Exception:
+            # In case check_password/identify fails, fall back to plaintext compare
+            if (pg.password or "") == password:
+                pg.password = make_password(password)
+                pg.save(update_fields=['password'])
+                valid = True
 
         if not valid:
             return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
@@ -731,15 +562,17 @@ class ParentDetailView(APIView):
             return Response({'error': 'Parent not found'}, status=status.HTTP_404_NOT_FOUND)
 
         data = request.data
+
         logger.debug('ParentDetailView.patch called; request.FILES keys: %s', list(getattr(request, 'FILES', {}).keys()))
 
-        # Capture originals to decide if must_change_credentials can be cleared
+        # Accept both JSON and multipart form-data. Update known fields only.
+        updated = False
+        # capture originals to decide if must_change_credentials can be cleared
         orig_username = parent.username
         orig_password = parent.password
         orig_must = getattr(parent, 'must_change_credentials', False)
 
         # Track what was changed
-        updated = False
         changed_password = False
         changed_username = False
 
@@ -748,8 +581,10 @@ class ParentDetailView(APIView):
             new_pw = data.get('password')
             current_pw = data.get('current_password')
 
+            # If this parent record is flagged as requiring credential change on first login,
+            # allow changing the password without providing the current_password. This supports
+            # the mobile first-login flow where temporary credentials were auto-generated.
             if orig_must:
-                # For forced changes, accept any password without current_password verification
                 parent.password = make_password(str(new_pw))
                 updated = True
                 changed_password = True
@@ -759,57 +594,46 @@ class ParentDetailView(APIView):
                 if not current_pw:
                     return Response({'error': 'current_password is required to change password.'}, status=status.HTTP_400_BAD_REQUEST)
 
-                stored = parent.password or ''
+                # Support both hashed and legacy-plaintext stored passwords
                 try:
-                    identify_hasher(stored)
-                    stored_hashed = True
-                except Exception:
-                    stored_hashed = False
-
-                # Verify current password
-                if stored_hashed:
-                    if not check_password(current_pw, stored):
-                        return Response({'error': 'Current password is incorrect.'}, status=status.HTTP_401_UNAUTHORIZED)
-                else:
-                    if stored != str(current_pw):
-                        return Response({'error': 'Current password is incorrect.'}, status=status.HTTP_401_UNAUTHORIZED)
+                    if parent.password and check_password(str(current_pw), parent.password):
+                        parent.password = make_password(str(new_pw))
+                        updated = True
+                        changed_password = True
+                        logger.info(f"Password changed for parent {parent.id} via voluntary update (hashed match)")
+                    elif (parent.password or '') == str(current_pw):
+                        # Legacy plaintext match: accept and upgrade stored password
+                        parent.password = make_password(str(new_pw))
+                        updated = True
+                        changed_password = True
+                        logger.info(f"Password changed for parent {parent.id} via voluntary update (plaintext match)")
                     else:
-                        # Migrate legacy plain-text to hashed
-                        try:
-                            parent.password = make_password(str(current_pw))
-                        except Exception:
-                            pass
+                        return Response({'error': 'Current password is incorrect.'}, status=status.HTTP_401_UNAUTHORIZED)
+                except Exception:
+                    # Fallback to plaintext compare if hashing utilities fail
+                    if (parent.password or '') == str(current_pw):
+                        parent.password = make_password(str(new_pw))
+                        updated = True
+                        changed_password = True
+                        logger.info(f"Password changed for parent {parent.id} via voluntary update (fallback)")
+                    else:
+                        return Response({'error': 'Current password is incorrect.'}, status=status.HTTP_401_UNAUTHORIZED)
 
-                parent.password = make_password(str(new_pw))
-                updated = True
-                changed_password = True
-                logger.info(f"Password changed for parent {parent.id} via voluntary update")
-
-        # FIXED: Handle ALL text fields including username
+        # Handle other fields
         for field in ('name', 'username', 'contact_number', 'address', 'email'):
             if field in data:
-                value = data.get(field)
-                
-                # Track username changes
+                # track username change
                 if field == 'username':
-                    if value is not None and str(value) != (orig_username or ''):
+                    new_un = data.get('username')
+                    if new_un is not None and str(new_un) != (orig_username or ''):
                         changed_username = True
-                        logger.info(f"Username changed for parent {parent.id}: '{orig_username}' -> '{value}'")
-                
-                setattr(parent, field, value)
+                        logger.info(f"Username changed for parent {parent.id}: '{orig_username}' -> '{new_un}'")
+                setattr(parent, field, data.get(field))
                 updated = True
 
-        # CRITICAL: Handle avatar upload from multipart/form-data
-        if request.FILES and ('avatar' in request.FILES or 'photo' in request.FILES):
-            uploaded = request.FILES.get('avatar') or request.FILES.get('photo')
-            logger.info(f'Received avatar file upload: {uploaded.name}, size={uploaded.size}')
-            print(f"[ParentDetailView] received avatar file: {uploaded.name}, size={uploaded.size}")
-            parent.avatar = uploaded
-            updated = True
-        
-        # Support base64 avatar uploads (fallback for some mobile clients)
+        # Support base64 avatar uploads using 'avatar_base64' (or 'photo_base64')
         avatar_base64 = data.get('avatar_base64') or data.get('photo_base64')
-        if avatar_base64 and not request.FILES:
+        if avatar_base64:
             try:
                 if 'base64,' in avatar_base64:
                     avatar_base64 = avatar_base64.split('base64,')[1]
@@ -821,43 +645,53 @@ class ParentDetailView(APIView):
             except Exception as e:
                 logger.exception('Error processing base64 avatar for parent %s: %s', pk, str(e))
 
-        if updated:
-            # Clear must_change_credentials flag when credentials are properly updated
-            if orig_must and changed_password:
-                parent.must_change_credentials = False
-                logger.info(f"Clearing must_change_credentials for parent {parent.id} - password changed (username also changed: {changed_username})")
-            
-            # Save the parent record
-            try:
-                parent.save()
-                logger.info(f"Parent {parent.id} saved successfully")
-                
-                # Log avatar details after save
-                if parent.avatar:
-                    logger.info(f"Avatar saved: name={parent.avatar.name}, url={parent.avatar.url}")
-                    print(f"[ParentDetailView] Avatar saved: name={parent.avatar.name}, url={parent.avatar.url}")
-            except Exception as e:
-                logger.exception(f"Error saving parent {parent.id}: {e}")
-                print(f"[ParentDetailView] ERROR saving parent: {e}")
-                return Response({'error': f'Failed to save: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # handle multipart/form-data file upload (fallback)
+        if getattr(request, 'FILES', None) and ('avatar' in request.FILES or 'photo' in request.FILES):
+            uploaded = request.FILES.get('avatar') or request.FILES.get('photo')
+            logger.debug('Saving uploaded avatar file: %s (size=%s)', uploaded.name, getattr(uploaded, 'size', 'unknown'))
+            print(f"[ParentDetailView] received avatar file: {uploaded.name}, size={getattr(uploaded, 'size', 'unknown')}")
+            parent.avatar = uploaded
+            updated = True
 
-        # Serialize and return response
+        if updated:
+            # CRITICAL FIX: Clear must_change_credentials flag when credentials are properly updated
+            if orig_must:
+                # During forced update, require password to be changed (username is optional but recommended)
+                if changed_password:
+                    parent.must_change_credentials = False
+                    logger.info(f"Clearing must_change_credentials for parent {parent.id} - password changed (username also changed: {changed_username})")
+                else:
+                    logger.warning(f"Parent {parent.id} must_change_credentials NOT cleared - password not changed (username changed: {changed_username})")
+            
+            parent.save()
+            
+            # debug after save
+            try:
+                avatar_name = parent.avatar.name
+                avatar_path = getattr(parent.avatar, 'path', None)
+            except Exception:
+                avatar_name = None
+                avatar_path = None
+            logger.debug('Parent saved. avatar.name=%s avatar.path=%s', avatar_name, avatar_path)
+            logger.info(f"Parent {parent.id} saved - must_change_credentials: {parent.must_change_credentials}")
+            print(f"[ParentDetailView] parent.save() completed. avatar.name={avatar_name} avatar.path={avatar_path}")
+        else:
+            avatar_name = None
+            avatar_path = None
+            
         serializer = ParentGuardianSerializer(parent, context={'request': request})
-        response_data = serializer.data
-        
-        # Add debug info
-        response_data['debug'] = {
+        debug_info = {
             'updated': updated,
-            'avatar_saved': bool(parent.avatar),
-            'avatar_url': parent.avatar.url if parent.avatar else None,
-            'avatar_name': parent.avatar.name if parent.avatar else None,
+            'avatar_name': avatar_name,
+            'avatar_path': avatar_path,
             'must_change_credentials': parent.must_change_credentials,
             'changed_username': changed_username,
             'changed_password': changed_password,
         }
         
-        logger.info(f"ParentDetailView PATCH complete for parent {parent.id}: {response_data['debug']}")
-        
+        # Return serializer data at top-level (keeps previous client expectations) and include debug info
+        response_data = dict(serializer.data)
+        response_data['debug'] = debug_info
         return Response(response_data)
 
 class ParentNotificationListCreateView(APIView):

@@ -38,11 +38,12 @@ class ParentGuardianSerializer(serializers.ModelSerializer):
     student_gender = serializers.CharField(source='student.gender', read_only=True)
     teacher_name = serializers.CharField(source='teacher.user.username', read_only=True)
     has_mobile_account = serializers.SerializerMethodField()
-    password = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    # Never include stored password in API responses. Accept password on input only.
+    password = serializers.CharField(max_length=100, required=False, allow_blank=True, write_only=True)
     must_change_credentials = serializers.BooleanField(read_only=True)
     # Raw ImageField for uploads
     avatar = serializers.ImageField(required=False, allow_null=True)
-    # Public URL for the avatar (always returns full Cloudinary URL)
+    # Public URL for the avatar (absolute URL when request context provided)
     avatar_url = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -76,28 +77,15 @@ class ParentGuardianSerializer(serializers.ModelSerializer):
         return hasattr(obj, 'mobile_account')
 
     def get_avatar_url(self, obj):
-        """Return the Cloudinary URL directly from avatar.url if available."""
+        """Return full absolute URL for the avatar if available."""
         if not obj.avatar:
             return None
+        request = self.context.get('request')
         try:
-            # When using Cloudinary storage, avatar.url often returns a full URL.
-            # If it's already absolute (starts with http) return as-is. Otherwise
-            # attempt to build an absolute URL from the request in the serializer
-            # context so clients (mobile/web) can fetch the image reliably.
-            url = obj.avatar.url
-            if isinstance(url, str) and url.startswith('http'):
-                return url
-
-            # Try to build absolute URI if request available in context
-            request = self.context.get('request') if self.context else None
+            # If we have request in context, build absolute URI
             if request:
-                try:
-                    return request.build_absolute_uri(url)
-                except Exception:
-                    pass
-
-            # Fallback: return the raw url (may be relative)
-            return url
+                return request.build_absolute_uri(obj.avatar.url)
+            return obj.avatar.url
         except Exception:
             return None
 
