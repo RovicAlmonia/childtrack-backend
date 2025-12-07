@@ -567,17 +567,15 @@ class ParentDetailView(APIView):
             return Response({'error': 'Parent not found'}, status=status.HTTP_404_NOT_FOUND)
 
         data = request.data
-
         logger.debug('ParentDetailView.patch called; request.FILES keys: %s', list(getattr(request, 'FILES', {}).keys()))
 
-        # Accept both JSON and multipart form-data. Update known fields only.
-        updated = False
-        # capture originals to decide if must_change_credentials can be cleared
+        # Capture originals to decide if must_change_credentials can be cleared
         orig_username = parent.username
         orig_password = parent.password
         orig_must = getattr(parent, 'must_change_credentials', False)
 
         # Track what was changed
+        updated = False
         changed_password = False
         changed_username = False
 
@@ -586,9 +584,6 @@ class ParentDetailView(APIView):
             new_pw = data.get('password')
             current_pw = data.get('current_password')
 
-            # If this parent record is flagged as requiring credential change on first login,
-            # allow changing the password without providing the current_password. This supports
-            # the mobile first-login flow where temporary credentials were auto-generated.
             if orig_must:
                 # For forced changes, accept any password without current_password verification
                 parent.password = make_password(str(new_pw))
@@ -607,7 +602,7 @@ class ParentDetailView(APIView):
                 except Exception:
                     stored_hashed = False
 
-                # Verify current password against hashed or legacy plain-text value
+                # Verify current password
                 if stored_hashed:
                     if not check_password(current_pw, stored):
                         return Response({'error': 'Current password is incorrect.'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -615,7 +610,7 @@ class ParentDetailView(APIView):
                     if stored != str(current_pw):
                         return Response({'error': 'Current password is incorrect.'}, status=status.HTTP_401_UNAUTHORIZED)
                     else:
-                        # Migrate legacy plain-text to hashed on change
+                        # Migrate legacy plain-text to hashed
                         try:
                             parent.password = make_password(str(current_pw))
                         except Exception:
@@ -626,21 +621,31 @@ class ParentDetailView(APIView):
                 changed_password = True
                 logger.info(f"Password changed for parent {parent.id} via voluntary update")
 
-        # Handle other fields
+        # FIXED: Handle ALL text fields including username
         for field in ('name', 'username', 'contact_number', 'address', 'email'):
             if field in data:
-                # track username change
+                value = data.get(field)
+                
+                # Track username changes
                 if field == 'username':
-                    new_un = data.get('username')
-                    if new_un is not None and str(new_un) != (orig_username or ''):
+                    if value is not None and str(value) != (orig_username or ''):
                         changed_username = True
-                        logger.info(f"Username changed for parent {parent.id}: '{orig_username}' -> '{new_un}'")
-                setattr(parent, field, data.get(field))
+                        logger.info(f"Username changed for parent {parent.id}: '{orig_username}' -> '{value}'")
+                
+                setattr(parent, field, value)
                 updated = True
 
-        # Support base64 avatar uploads using 'avatar_base64' (or 'photo_base64')
+        # CRITICAL: Handle avatar upload from multipart/form-data
+        if request.FILES and ('avatar' in request.FILES or 'photo' in request.FILES):
+            uploaded = request.FILES.get('avatar') or request.FILES.get('photo')
+            logger.info(f'Received avatar file upload: {uploaded.name}, size={uploaded.size}')
+            print(f"[ParentDetailView] received avatar file: {uploaded.name}, size={uploaded.size}")
+            parent.avatar = uploaded
+            updated = True
+        
+        # Support base64 avatar uploads (fallback for some mobile clients)
         avatar_base64 = data.get('avatar_base64') or data.get('photo_base64')
-        if avatar_base64:
+        if avatar_base64 and not request.FILES:
             try:
                 if 'base64,' in avatar_base64:
                     avatar_base64 = avatar_base64.split('base64,')[1]
@@ -652,53 +657,43 @@ class ParentDetailView(APIView):
             except Exception as e:
                 logger.exception('Error processing base64 avatar for parent %s: %s', pk, str(e))
 
-        # handle multipart/form-data file upload (fallback)
-        if getattr(request, 'FILES', None) and ('avatar' in request.FILES or 'photo' in request.FILES):
-            uploaded = request.FILES.get('avatar') or request.FILES.get('photo')
-            logger.debug('Saving uploaded avatar file: %s (size=%s)', uploaded.name, getattr(uploaded, 'size', 'unknown'))
-            print(f"[ParentDetailView] received avatar file: {uploaded.name}, size={getattr(uploaded, 'size', 'unknown')}")
-            parent.avatar = uploaded
-            updated = True
-
         if updated:
-            # CRITICAL FIX: Clear must_change_credentials flag when credentials are properly updated
-            if orig_must:
-                # During forced update, require password to be changed (username is optional but recommended)
-                if changed_password:
-                    parent.must_change_credentials = False
-                    logger.info(f"Clearing must_change_credentials for parent {parent.id} - password changed (username also changed: {changed_username})")
-                else:
-                    logger.warning(f"Parent {parent.id} must_change_credentials NOT cleared - password not changed (username changed: {changed_username})")
+            # Clear must_change_credentials flag when credentials are properly updated
+            if orig_must and changed_password:
+                parent.must_change_credentials = False
+                logger.info(f"Clearing must_change_credentials for parent {parent.id} - password changed (username also changed: {changed_username})")
             
-            parent.save()
-            
-            # debug after save
+            # Save the parent record
             try:
-                avatar_name = parent.avatar.name
-                avatar_path = getattr(parent.avatar, 'path', None)
-            except Exception:
-                avatar_name = None
-                avatar_path = None
-            logger.debug('Parent saved. avatar.name=%s avatar.path=%s', avatar_name, avatar_path)
-            logger.info(f"Parent {parent.id} saved - must_change_credentials: {parent.must_change_credentials}")
-            print(f"[ParentDetailView] parent.save() completed. avatar.name={avatar_name} avatar.path={avatar_path}")
-        else:
-            avatar_name = None
-            avatar_path = None
-            
+                parent.save()
+                logger.info(f"Parent {parent.id} saved successfully")
+                
+                # Log avatar details after save
+                if parent.avatar:
+                    logger.info(f"Avatar saved: name={parent.avatar.name}, url={parent.avatar.url}")
+                    print(f"[ParentDetailView] Avatar saved: name={parent.avatar.name}, url={parent.avatar.url}")
+            except Exception as e:
+                logger.exception(f"Error saving parent {parent.id}: {e}")
+                print(f"[ParentDetailView] ERROR saving parent: {e}")
+                return Response({'error': f'Failed to save: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Serialize and return response
         serializer = ParentGuardianSerializer(parent, context={'request': request})
-        debug_info = {
+        response_data = serializer.data
+        
+        # Add debug info
+        response_data['debug'] = {
             'updated': updated,
-            'avatar_name': avatar_name,
-            'avatar_path': avatar_path,
+            'avatar_saved': bool(parent.avatar),
+            'avatar_url': parent.avatar.url if parent.avatar else None,
+            'avatar_name': parent.avatar.name if parent.avatar else None,
             'must_change_credentials': parent.must_change_credentials,
             'changed_username': changed_username,
             'changed_password': changed_password,
         }
         
-        # Return serializer data at top-level (keeps previous client expectations) and include debug info
-        response_data = dict(serializer.data)
-        response_data['debug'] = debug_info
+        logger.info(f"ParentDetailView PATCH complete for parent {parent.id}: {response_data['debug']}")
+        
         return Response(response_data)
 
 class ParentNotificationListCreateView(APIView):
