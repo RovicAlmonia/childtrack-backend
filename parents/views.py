@@ -558,8 +558,23 @@ class ParentLoginView(APIView):
         if not valid:
             return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
-        serializer = ParentGuardianSerializer(pg, context={'request': request})
-        return Response({"parent": serializer.data}, status=status.HTTP_200_OK)
+        # Try to serialize with request context so avatar_url is absolute.
+        # If serialization fails for any reason, fall back to serializing
+        # without the request context to avoid returning HTTP 500 to clients.
+        try:
+            serializer = ParentGuardianSerializer(pg, context={'request': request})
+            parent_data = serializer.data
+        except Exception as exc:
+            logger.exception('ParentLoginView: serializer with request context failed')
+            try:
+                serializer = ParentGuardianSerializer(pg)
+                parent_data = serializer.data
+            except Exception:
+                # Last-resort: return minimal info to avoid exposing internals
+                logger.exception('ParentLoginView: fallback serializer also failed')
+                return Response({"error": "Server error while preparing response"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response({"parent": parent_data}, status=status.HTTP_200_OK)
 
 
 class ParentDetailView(APIView):
