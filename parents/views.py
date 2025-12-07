@@ -35,7 +35,7 @@ from .serializers import (
 
 from django.shortcuts import redirect
 from django.core.files.storage import default_storage
-from django.http import FileResponse
+from django.http import FileResponse, HttpResponse
 import mimetypes
 
 logger = logging.getLogger(__name__)
