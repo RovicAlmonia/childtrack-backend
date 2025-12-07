@@ -80,9 +80,24 @@ class ParentGuardianSerializer(serializers.ModelSerializer):
         if not obj.avatar:
             return None
         try:
-            # When using Cloudinary storage, avatar.url returns the full Cloudinary URL
-            # No need to build_absolute_uri - just return it directly
-            return obj.avatar.url
+            # When using Cloudinary storage, avatar.url often returns a full URL.
+            # If it's already absolute (starts with http) return as-is. Otherwise
+            # attempt to build an absolute URL from the request in the serializer
+            # context so clients (mobile/web) can fetch the image reliably.
+            url = obj.avatar.url
+            if isinstance(url, str) and url.startswith('http'):
+                return url
+
+            # Try to build absolute URI if request available in context
+            request = self.context.get('request') if self.context else None
+            if request:
+                try:
+                    return request.build_absolute_uri(url)
+                except Exception:
+                    pass
+
+            # Fallback: return the raw url (may be relative)
+            return url
         except Exception:
             return None
 
