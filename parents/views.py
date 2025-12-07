@@ -15,6 +15,7 @@ from django.utils import timezone
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 import base64
 from django.core.files.base import ContentFile
+from django.contrib.auth.hashers import check_password, make_password, identify_hasher
 
 from .models import Student, ParentGuardian, ParentMobileAccount, ParentNotification, ParentEvent, ParentSchedule
 
@@ -513,8 +514,29 @@ class ParentLoginView(APIView):
         except ParentGuardian.DoesNotExist:
             return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Passwords are stored in plaintext in this model (per project choice)
-        if (pg.password or "") != password:
+        stored = pg.password or ''
+        # Determine if stored password is hashed
+        try:
+            identify_hasher(stored)
+            stored_hashed = True
+        except Exception:
+            stored_hashed = False
+
+        valid = False
+        if stored_hashed:
+            valid = check_password(password, stored)
+        else:
+            # fallback for legacy plain-text passwords: allow login and migrate to hashed
+            if stored == password:
+                valid = True
+                try:
+                    pg.password = make_password(password)
+                    pg.save(update_fields=['password'])
+                except Exception:
+                    # best-effort migration; continue even if migration fails
+                    pass
+
+        if not valid:
             return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
         serializer = ParentGuardianSerializer(pg)
@@ -563,13 +585,13 @@ class ParentDetailView(APIView):
         if 'password' in data:
             new_pw = data.get('password')
             current_pw = data.get('current_password')
-            
+
             # If this parent record is flagged as requiring credential change on first login,
             # allow changing the password without providing the current_password. This supports
             # the mobile first-login flow where temporary credentials were auto-generated.
             if orig_must:
                 # For forced changes, accept any password without current_password verification
-                parent.password = str(new_pw)
+                parent.password = make_password(str(new_pw))
                 updated = True
                 changed_password = True
                 logger.info(f"Password changed for parent {parent.id} during forced credential update")
@@ -577,10 +599,29 @@ class ParentDetailView(APIView):
                 # For voluntary changes, require current password
                 if not current_pw:
                     return Response({'error': 'current_password is required to change password.'}, status=status.HTTP_400_BAD_REQUEST)
-                # simple plain-text compare (project currently stores plain passwords)
-                if (parent.password or '') != str(current_pw):
-                    return Response({'error': 'Current password is incorrect.'}, status=status.HTTP_401_UNAUTHORIZED)
-                parent.password = str(new_pw)
+
+                stored = parent.password or ''
+                try:
+                    identify_hasher(stored)
+                    stored_hashed = True
+                except Exception:
+                    stored_hashed = False
+
+                # Verify current password against hashed or legacy plain-text value
+                if stored_hashed:
+                    if not check_password(current_pw, stored):
+                        return Response({'error': 'Current password is incorrect.'}, status=status.HTTP_401_UNAUTHORIZED)
+                else:
+                    if stored != str(current_pw):
+                        return Response({'error': 'Current password is incorrect.'}, status=status.HTTP_401_UNAUTHORIZED)
+                    else:
+                        # Migrate legacy plain-text to hashed on change
+                        try:
+                            parent.password = make_password(str(current_pw))
+                        except Exception:
+                            pass
+
+                parent.password = make_password(str(new_pw))
                 updated = True
                 changed_password = True
                 logger.info(f"Password changed for parent {parent.id} via voluntary update")
