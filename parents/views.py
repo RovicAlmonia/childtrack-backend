@@ -740,6 +740,11 @@ class ParentDetailView(APIView):
         
         # Return serializer data at top-level (keeps previous client expectations) and include debug info
         response_data = dict(serializer.data)
+        # Ensure a top-level `avatar_url` exists for clients that expect it
+        try:
+            response_data['avatar_url'] = serializer.data.get('avatar_url')
+        except Exception:
+            response_data['avatar_url'] = None
         response_data['debug'] = debug_info
         return Response(response_data)
 
