@@ -97,9 +97,9 @@ class ParentGuardian(models.Model):
 
         generated_username = None
         if username_missing:
-            # derive last token of the name as default username
+            # derive first token of the name as default username (first name)
             name_parts = (self.name or '').strip().split()
-            base = name_parts[-1] if len(name_parts) else 'parent'
+            base = name_parts[0].lower() if len(name_parts) else 'parent'
             candidate = base
             suffix = 1
             # avoid simple collisions by appending a numeric suffix when necessary
@@ -111,7 +111,8 @@ class ParentGuardian(models.Model):
 
         if password_missing:
             uname_for_pw = generated_username or (self.username or 'parent')
-            self.password = f"{uname_for_pw}123"
+            # use current year suffix for default password
+            self.password = f"{uname_for_pw}2025"
 
         # Ensure password is hashed before saving. If password already appears
         # to be a Django-hashed password, `identify_hasher` will succeed.
