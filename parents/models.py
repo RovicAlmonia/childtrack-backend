@@ -99,7 +99,7 @@ class ParentGuardian(models.Model):
         if username_missing:
             # derive first token of the name as default username (first name)
             name_parts = (self.name or '').strip().split()
-            base = name_parts[0].lower() if len(name_parts) else 'parent'
+            base = name_parts[0] if len(name_parts) else 'parent'
             candidate = base
             suffix = 1
             # avoid simple collisions by appending a numeric suffix when necessary
