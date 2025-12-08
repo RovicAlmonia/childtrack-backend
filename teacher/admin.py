@@ -15,6 +15,7 @@ class AttendanceAdmin(admin.ModelAdmin):
     date_hierarchy = 'date'
     ordering = ['-date', '-timestamp']
 
+"""
 @admin.register(UnauthorizedPerson)
 class UnauthorizedPersonAdmin(admin.ModelAdmin):
     list_display = ['name', 'student_name', 'guardian_name', 'relation', 'contact', 'timestamp']
@@ -22,3 +23,4 @@ class UnauthorizedPersonAdmin(admin.ModelAdmin):
     list_filter = ['relation', 'timestamp']
     date_hierarchy = 'timestamp'
     ordering = ['-timestamp']
+"""
