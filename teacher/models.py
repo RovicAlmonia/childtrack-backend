@@ -92,13 +92,13 @@ class Dropout(models.Model):
     def __str__(self):
         return f"{self.student_name} - Dropout on {self.date}"
 
-"""
+
 class UnauthorizedPerson(models.Model):
     teacher = models.ForeignKey("TeacherProfile", on_delete=models.CASCADE, related_name='unauthorized_persons')
     name = models.CharField(max_length=100)
     address = models.TextField()
     age = models.IntegerField()
-    student_name = models.CharField(maxlength=100)
+    student_name = models.CharField(max_length=100)
     guardian_name = models.CharField(max_length=100)
     relation = models.CharField(max_length=50)
     contact = models.CharField(max_length=15)
