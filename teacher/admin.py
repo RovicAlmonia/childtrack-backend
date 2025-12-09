@@ -7,6 +7,14 @@ class TeacherProfileAdmin(admin.ModelAdmin):
     search_fields = ['user__username', 'section']
     list_filter = ['gender', 'section']
 
+@admin.register(ScanPhoto)
+class ScanPhotoAdmin(admin.ModelAdmin):
+    list_display = ['student_name', 'status', 'teacher', 'timestamp']
+    search_fields = ['student_name', 'teacher__user__username']
+    list_filter = ['status', 'timestamp']
+    date_hierarchy = 'timestamp'
+    ordering = ['-timestamp']
+
 @admin.register(Attendance)
 class AttendanceAdmin(admin.ModelAdmin):
     list_display = ['student_name', 'guardian_name', 'teacher', 'date', 'status', 'transaction_type', 'session', 'gender', 'timestamp']
