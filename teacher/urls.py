@@ -24,6 +24,8 @@ from .views import (
 
     # Reports
     generate_sf2_excel,
+
+     ScanPhotoView,
 )
 
 urlpatterns = [
@@ -78,3 +80,4 @@ urlpatterns = [
     # Generate SF2 Excel report (POST only)
     path('reports/sf2/', generate_sf2_excel, name='generate-sf2'),
 ]
+
