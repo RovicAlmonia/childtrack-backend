@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import TeacherProfile, Attendance, UnauthorizedPerson
+from .models import TeacherProfile, Attendance, UnauthorizedPerson, ScanPhoto
 
 @admin.register(TeacherProfile)
 class TeacherProfileAdmin(admin.ModelAdmin):
