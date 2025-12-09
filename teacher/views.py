@@ -880,3 +880,22 @@ def generate_sf2_excel(request):
             {"error": f"Failed to generate SF2 Excel: {str(e)}"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+from .models import ScanPhoto
+from .serializers import ScanPhotoSerializer
+
+class ScanPhotoView(APIView):
+    """Save photos captured during scans"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        try:
+            teacher_profile = TeacherProfile.objects.get(user=request.user)
+            serializer = ScanPhotoSerializer(data=request.data)
+            if serializer.is_valid():
+                serializer.save(teacher=teacher_profile)
+                return Response({"message": "Photo saved successfully"}, status=status.HTTP_201_CREATED)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except TeacherProfile.DoesNotExist:
+            return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
