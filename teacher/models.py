@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from .models import TeacherProfile
 
 class ScanPhoto(models.Model):
     """Store photos captured during attendance scans"""
