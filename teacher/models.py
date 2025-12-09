@@ -1,20 +1,21 @@
 from django.db import models
 from django.contrib.auth.models import User
-from .models import TeacherProfile
+
 
 class ScanPhoto(models.Model):
     """Store photos captured during attendance scans"""
-    teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='scan_photos')
+    teacher = models.ForeignKey("TeacherProfile", on_delete=models.CASCADE, related_name='scan_photos')
     student_name = models.CharField(max_length=100)
     status = models.CharField(max_length=20)
     photo = models.TextField()  # Base64 encoded image
     timestamp = models.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
         ordering = ['-timestamp']
-    
+
     def __str__(self):
         return f"{self.student_name} - {self.status} - {self.timestamp}"
+
 
 class Attendance(models.Model):
     STATUS_CHOICES = [
@@ -34,8 +35,8 @@ class Attendance(models.Model):
         ('drop-off', 'Drop-off'),
         ('pick-up', 'Pick-up'),
     ]
-    
-    teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='attendances')
+
+    teacher = models.ForeignKey("TeacherProfile", on_delete=models.CASCADE, related_name='attendances')
     student_name = models.CharField(max_length=100)
     student_lrn = models.CharField(max_length=50, blank=True, null=True)
     gender = models.CharField(max_length=10, choices=GENDER_CHOICES, default='Male')
@@ -56,15 +57,16 @@ class Attendance(models.Model):
         default='attendance',
         help_text="Type of transaction: regular attendance, drop-off, or pick-up"
     )
-    
+
     class Meta:
         ordering = ['-date', '-timestamp']
 
     def __str__(self):
         return f"{self.student_name} - {self.status} ({self.transaction_type}) - {self.date}"
 
+
 class Absence(models.Model):
-    teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='absences')
+    teacher = models.ForeignKey("TeacherProfile", on_delete=models.CASCADE, related_name='absences')
     student_name = models.CharField(max_length=100)
     date = models.DateField()
     reason = models.TextField()
@@ -76,8 +78,9 @@ class Absence(models.Model):
     def __str__(self):
         return f"{self.student_name} - Absent on {self.date}"
 
+
 class Dropout(models.Model):
-    teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='dropouts')
+    teacher = models.ForeignKey("TeacherProfile", on_delete=models.CASCADE, related_name='dropouts')
     student_name = models.CharField(max_length=100)
     date = models.DateField()
     reason = models.TextField()
@@ -89,12 +92,13 @@ class Dropout(models.Model):
     def __str__(self):
         return f"{self.student_name} - Dropout on {self.date}"
 
+
 class UnauthorizedPerson(models.Model):
-    teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='unauthorized_persons')
+    teacher = models.ForeignKey("TeacherProfile", on_delete=models.CASCADE, related_name='unauthorized_persons')
     name = models.CharField(max_length=100)
     address = models.TextField()
     age = models.IntegerField()
-    student_name = models.CharField(max_length=100)
+    student_name = models.CharField(maxlength=100)
     guardian_name = models.CharField(max_length=100)
     relation = models.CharField(max_length=50)
     contact = models.CharField(max_length=15)
