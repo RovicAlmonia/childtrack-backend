@@ -1,16 +1,19 @@
 from django.db import models
 from django.contrib.auth.models import User
 
-class TeacherProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
-    age = models.IntegerField()
-    gender = models.CharField(max_length=10)
-    section = models.CharField(max_length=50)
-    contact = models.CharField(max_length=15)
-    address = models.TextField()
-
+class ScanPhoto(models.Model):
+    """Store photos captured during attendance scans"""
+    teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='scan_photos')
+    student_name = models.CharField(max_length=100)
+    status = models.CharField(max_length=20)
+    photo = models.TextField()  # Base64 encoded image
+    timestamp = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-timestamp']
+    
     def __str__(self):
-        return self.user.username
+        return f"{self.student_name} - {self.status} - {self.timestamp}"
 
 class Attendance(models.Model):
     STATUS_CHOICES = [
