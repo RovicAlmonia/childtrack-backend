@@ -66,3 +66,13 @@ class UnauthorizedPersonSerializer(serializers.ModelSerializer):
         fields = ['id', 'teacher', 'teacher_name', 'name', 'address', 'age', 'student_name', 
                   'guardian_name', 'relation', 'contact', 'photo', 'timestamp']
         read_only_fields = ['timestamp', 'teacher']
+
+
+class ScanPhotoSerializer(serializers.ModelSerializer):
+    teacher_name = serializers.CharField(source='teacher.user.first_name', read_only=True)
+    photo_base64 = serializers.CharField(source='photo', write_only=True)
+    
+    class Meta:
+        model = ScanPhoto
+        fields = ['id', 'teacher', 'teacher_name', 'student_name', 'status', 'photo', 'photo_base64', 'timestamp']
+        read_only_fields = ['timestamp', 'teacher']
