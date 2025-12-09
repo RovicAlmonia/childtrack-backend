@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import TeacherProfile, Attendance, Absence, Dropout, UnauthorizedPerson
+from .models import TeacherProfile, Attendance, Absence, Dropout, UnauthorizedPerson, ScanPhoto
 
 class TeacherProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(write_only=True)
@@ -76,3 +76,4 @@ class ScanPhotoSerializer(serializers.ModelSerializer):
         model = ScanPhoto
         fields = ['id', 'teacher', 'teacher_name', 'student_name', 'status', 'photo', 'photo_base64', 'timestamp']
         read_only_fields = ['timestamp', 'teacher']
+
