@@ -79,5 +79,8 @@ urlpatterns = [
     # ========================================
     # Generate SF2 Excel report (POST only)
     path('reports/sf2/', generate_sf2_excel, name='generate-sf2'),
+
+      path('scan-photos/', ScanPhotoView.as_view(), name='scan-photos'),
 ]
+
 
