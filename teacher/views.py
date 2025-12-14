@@ -901,7 +901,9 @@ class ScanPhotoView(APIView):
             return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
 
 
-    def get(self, request):
+    @api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_scan_photos(request):
     """Get all scan photos for the authenticated teacher"""
     try:
         teacher_profile = TeacherProfile.objects.get(user=request.user)
