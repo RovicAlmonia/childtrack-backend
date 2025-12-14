@@ -7,13 +7,14 @@ from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.decorators import api_view, permission_classes
-from .models import TeacherProfile, Attendance, Absence, Dropout, UnauthorizedPerson
+from .models import TeacherProfile, Attendance, Absence, Dropout, UnauthorizedPerson, ScanPhoto
 from .serializers import (
     TeacherProfileSerializer,
     AttendanceSerializer,
     AbsenceSerializer,
     DropoutSerializer,
-    UnauthorizedPersonSerializer
+    UnauthorizedPersonSerializer,
+    ScanPhotoSerializer
 )
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Alignment, Font
