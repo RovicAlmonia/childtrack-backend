@@ -881,17 +881,26 @@ def generate_sf2_excel(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-from .models import ScanPhoto
-from .serializers import ScanPhotoSerializer
-
-# ==========================
-# SAVE SCAN PHOTO (POST)
-# ==========================
 class ScanPhotoView(APIView):
-    """Save photos captured during scans"""
     permission_classes = [permissions.IsAuthenticated]
-    
+
+    def get(self, request):
+        """Get all scan photos for the authenticated teacher"""
+        try:
+            teacher_profile = TeacherProfile.objects.get(user=request.user)
+            photos = ScanPhoto.objects.filter(
+                teacher=teacher_profile
+            ).order_by('-timestamp')
+            serializer = ScanPhotoSerializer(photos, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except TeacherProfile.DoesNotExist:
+            return Response(
+                {"error": "Teacher profile not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
     def post(self, request):
+        """Save scan photo"""
         try:
             teacher_profile = TeacherProfile.objects.get(user=request.user)
             serializer = ScanPhotoSerializer(data=request.data)
@@ -907,23 +916,3 @@ class ScanPhotoView(APIView):
                 {"error": "Teacher profile not found"},
                 status=status.HTTP_404_NOT_FOUND
             )
-
-# ==========================
-# GET SCAN PHOTOS (GET)
-# ==========================
-@api_view(['GET'])
-@permission_classes([permissions.IsAuthenticated])
-def get_scan_photos(request):
-    """Get all scan photos for the authenticated teacher"""
-    try:
-        teacher_profile = TeacherProfile.objects.get(user=request.user)
-        photos = ScanPhoto.objects.filter(
-            teacher=teacher_profile
-        ).order_by('-timestamp')
-        serializer = ScanPhotoSerializer(photos, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    except TeacherProfile.DoesNotExist:
-        return Response(
-            {"error": "Teacher profile not found"},
-            status=status.HTTP_404_NOT_FOUND
-        )
