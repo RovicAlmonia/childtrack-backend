@@ -899,3 +899,17 @@ class ScanPhotoView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except TeacherProfile.DoesNotExist:
             return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
+
+
+    def get(self, request):
+    """Get all scan photos for the authenticated teacher"""
+    try:
+        teacher_profile = TeacherProfile.objects.get(user=request.user)
+        photos = ScanPhoto.objects.filter(teacher=teacher_profile).order_by('-timestamp')
+        serializer = ScanPhotoSerializer(photos, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    except TeacherProfile.DoesNotExist:
+        return Response(
+            {"error": "Teacher profile not found"},
+            status=status.HTTP_404_NOT_FOUND
+        )
