@@ -68,12 +68,45 @@ class UnauthorizedPersonSerializer(serializers.ModelSerializer):
         read_only_fields = ['timestamp', 'teacher']
 
 
+
 class ScanPhotoSerializer(serializers.ModelSerializer):
     teacher_name = serializers.CharField(source='teacher.user.first_name', read_only=True)
-    photo_base64 = serializers.CharField(source='photo', write_only=True)
+    photo_base64 = serializers.CharField(write_only=True)  # Input field from frontend
     
     class Meta:
         model = ScanPhoto
         fields = ['id', 'teacher', 'teacher_name', 'student_name', 'status', 'photo', 'photo_base64', 'timestamp']
-        read_only_fields = ['timestamp', 'teacher']
+        read_only_fields = ['timestamp', 'teacher', 'photo']  # photo is read-only, populated from photo_base64
+        extra_kwargs = {
+            'photo': {'required': False}  # Make photo optional since we use photo_base64
+        }
+    
+    def create(self, validated_data):
+        """
+        Override create to handle photo_base64 → photo conversion
+        """
+        # Extract photo_base64 from validated data
+        photo_base64 = validated_data.pop('photo_base64', None)
+        
+        # Set the photo field with the base64 data
+        if photo_base64:
+            validated_data['photo'] = photo_base64
+        
+        # Create the instance with teacher from context
+        return super().create(validated_data)
+    
+    def validate_photo_base64(self, value):
+        """
+        Validate that photo_base64 is not empty and looks like valid base64
+        """
+        if not value or len(value) < 100:
+            raise serializers.ValidationError("Photo data is too short or invalid")
+        
+        # Basic validation: check if it looks like base64
+        import re
+        if not re.match(r'^[A-Za-z0-9+/]+={0,2}$', value):
+            raise serializers.ValidationError("Invalid base64 format")
+        
+        return value
+
 
