@@ -917,3 +917,302 @@ class ScanPhotoView(APIView):
                 {"error": "Teacher profile not found"},
                 status=status.HTTP_404_NOT_FOUND
             )
+
+
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status, permissions
+from django.db import transaction
+from django.utils import timezone
+from datetime import date, datetime
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class MarkUnscannedAbsentView(APIView):
+    """
+    Automatically mark all unscanned students as absent for a given date.
+    
+    Endpoint: POST /api/attendance/mark-unscanned-absent/
+    
+    Request body:
+    {
+        "date": "2025-12-15",  // Optional, defaults to today
+        "teacher_id": 123,      // Optional, if not provided uses authenticated teacher
+        "session": "Morning"    // Optional session filter
+    }
+    
+    Response:
+    {
+        "message": "Marked 15 students as absent",
+        "date": "2025-12-15",
+        "marked_count": 15,
+        "already_marked": 5,
+        "students_marked": [
+            {"lrn": "123456", "name": "John Doe", "reason": "Not scanned"},
+            ...
+        ]
+    }
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        try:
+            # Get parameters
+            target_date_str = request.data.get('date')
+            teacher_id = request.data.get('teacher_id')
+            session = request.data.get('session')
+            
+            # Parse date or use today
+            if target_date_str:
+                try:
+                    target_date = datetime.strptime(target_date_str, '%Y-%m-%d').date()
+                except ValueError:
+                    return Response(
+                        {"error": "Invalid date format. Use YYYY-MM-DD"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            else:
+                target_date = date.today()
+            
+            # Get teacher
+            if teacher_id:
+                try:
+                    from teacher.models import TeacherProfile
+                    teacher = TeacherProfile.objects.get(id=teacher_id)
+                except TeacherProfile.DoesNotExist:
+                    return Response(
+                        {"error": "Teacher not found"},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+            else:
+                try:
+                    from teacher.models import TeacherProfile
+                    teacher = TeacherProfile.objects.get(user=request.user)
+                except TeacherProfile.DoesNotExist:
+                    return Response(
+                        {"error": "Teacher profile not found"},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+            
+            # Get all students for this teacher
+            from parents.models import Student
+            all_students = Student.objects.filter(teacher=teacher)
+            
+            if not all_students.exists():
+                return Response({
+                    "message": "No students found for this teacher",
+                    "date": str(target_date),
+                    "marked_count": 0,
+                    "already_marked": 0,
+                    "students_marked": []
+                })
+            
+            # Get existing attendance records for this date
+            from attendance.models import AttendanceRecord
+            existing_records = AttendanceRecord.objects.filter(
+                date=target_date,
+                teacher=teacher
+            )
+            
+            if session:
+                existing_records = existing_records.filter(session=session)
+            
+            # Get LRNs of students who already have records
+            scanned_lrns = set(existing_records.values_list('student_lrn', flat=True))
+            
+            # Find students who haven't been scanned
+            unscanned_students = all_students.exclude(lrn__in=scanned_lrns)
+            
+            # Create absence records
+            marked_students = []
+            marked_count = 0
+            
+            with transaction.atomic():
+                for student in unscanned_students:
+                    absence_record = AttendanceRecord.objects.create(
+                        student_name=student.name,
+                        student_lrn=student.lrn,
+                        gender=student.gender or '',
+                        date=target_date,
+                        status='Absent',
+                        reason='Not scanned - Auto-marked absent',
+                        teacher=teacher,
+                        session=session
+                    )
+                    
+                    marked_students.append({
+                        'lrn': student.lrn,
+                        'name': student.name,
+                        'gender': student.get_gender_display() if student.gender else '',
+                        'reason': 'Not scanned - Auto-marked absent'
+                    })
+                    marked_count += 1
+                    
+                    logger.info(
+                        f"Auto-marked absent: {student.name} (LRN: {student.lrn}) "
+                        f"for date {target_date}"
+                    )
+            
+            # Count already marked students
+            already_marked = len(scanned_lrns)
+            
+            return Response({
+                "message": f"Marked {marked_count} students as absent",
+                "date": str(target_date),
+                "marked_count": marked_count,
+                "already_marked": already_marked,
+                "total_students": all_students.count(),
+                "students_marked": marked_students
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.exception("Error in MarkUnscannedAbsentView")
+            return Response(
+                {"error": f"Failed to mark absences: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class BulkMarkAbsentView(APIView):
+    """
+    Bulk mark multiple dates for absence tracking.
+    Useful for catching up on past days.
+    
+    Endpoint: POST /api/attendance/bulk-mark-absent/
+    
+    Request body:
+    {
+        "start_date": "2025-12-01",
+        "end_date": "2025-12-15",
+        "teacher_id": 123,      // Optional
+        "session": "Morning"    // Optional
+    }
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        try:
+            start_date_str = request.data.get('start_date')
+            end_date_str = request.data.get('end_date')
+            
+            if not start_date_str or not end_date_str:
+                return Response(
+                    {"error": "start_date and end_date are required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            try:
+                start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+                end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+            except ValueError:
+                return Response(
+                    {"error": "Invalid date format. Use YYYY-MM-DD"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if start_date > end_date:
+                return Response(
+                    {"error": "start_date must be before end_date"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Process each date
+            from datetime import timedelta
+            current_date = start_date
+            results = []
+            
+            while current_date <= end_date:
+                # Call the single-day marking logic
+                day_request = request
+                day_request.data['date'] = current_date.strftime('%Y-%m-%d')
+                
+                view = MarkUnscannedAbsentView()
+                response = view.post(day_request)
+                
+                if response.status_code == 200:
+                    results.append({
+                        'date': str(current_date),
+                        'marked': response.data.get('marked_count', 0)
+                    })
+                
+                current_date += timedelta(days=1)
+            
+            total_marked = sum(r['marked'] for r in results)
+            
+            return Response({
+                "message": f"Bulk marking complete. Marked {total_marked} total absences",
+                "results": results,
+                "total_marked": total_marked
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.exception("Error in BulkMarkAbsentView")
+            return Response(
+                {"error": f"Failed to bulk mark absences: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class AbsenceStatsView(APIView):
+    """
+    Get absence statistics for a teacher.
+    
+    Endpoint: GET /api/attendance/absence-stats/
+    Query params: ?date=2025-12-15&teacher_id=123
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        try:
+            target_date_str = request.query_params.get('date')
+            teacher_id = request.query_params.get('teacher_id')
+            
+            if target_date_str:
+                try:
+                    target_date = datetime.strptime(target_date_str, '%Y-%m-%d').date()
+                except ValueError:
+                    target_date = date.today()
+            else:
+                target_date = date.today()
+            
+            # Get teacher
+            if teacher_id:
+                from teacher.models import TeacherProfile
+                teacher = TeacherProfile.objects.get(id=teacher_id)
+            else:
+                from teacher.models import TeacherProfile
+                teacher = TeacherProfile.objects.get(user=request.user)
+            
+            # Get statistics
+            from parents.models import Student
+            from attendance.models import AttendanceRecord
+            
+            total_students = Student.objects.filter(teacher=teacher).count()
+            
+            records_today = AttendanceRecord.objects.filter(
+                date=target_date,
+                teacher=teacher
+            )
+            
+            present_count = records_today.filter(status='Present').count()
+            absent_count = records_today.filter(status='Absent').count()
+            unscanned_count = total_students - records_today.count()
+            
+            return Response({
+                "date": str(target_date),
+                "total_students": total_students,
+                "present": present_count,
+                "absent": absent_count,
+                "unscanned": unscanned_count,
+                "scanned_percentage": round((records_today.count() / total_students * 100) if total_students > 0 else 0, 1)
+            })
+            
+        except Exception as e:
+            logger.exception("Error in AbsenceStatsView")
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
