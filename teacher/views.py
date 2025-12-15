@@ -631,8 +631,8 @@ def generate_sf2_excel(request):
         green_fill = PatternFill(start_color='00B050', end_color='00B050', fill_type='solid')
         white_fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
         
-        # Green font for the diagonal line character - MUCH LARGER
-        green_font_large = Font(color="00B050", size=48, bold=True)
+        # Keep original triangle font size
+        green_font_triangle = Font(color="00B050", size=48, bold=True, name='Arial')
         
         # Border styles
         thin_border = Border(
@@ -645,9 +645,24 @@ def generate_sf2_excel(request):
         center_alignment = Alignment(horizontal='center', vertical='center', wrap_text=False)
         left_alignment = Alignment(horizontal='left', vertical='center')
         
-        # Special alignments to position large triangles to fill cells
-        fill_top_alignment = Alignment(horizontal='center', vertical='top', wrap_text=False, shrink_to_fit=False)
-        fill_bottom_alignment = Alignment(horizontal='center', vertical='bottom', wrap_text=False, shrink_to_fit=False)
+        # IMPROVED: Precise alignments for perfect triangle positioning
+        # For upper triangle (AM - ◤): position in top-left corner
+        am_triangle_alignment = Alignment(
+            horizontal='left', 
+            vertical='top', 
+            wrap_text=False, 
+            shrink_to_fit=False,
+            indent=0
+        )
+        
+        # For lower triangle (PM - ◢): position in bottom-right corner
+        pm_triangle_alignment = Alignment(
+            horizontal='right', 
+            vertical='bottom', 
+            wrap_text=False, 
+            shrink_to_fit=False,
+            indent=0
+        )
         
         if wb.sheetnames:
             ws = wb[wb.sheetnames[0]]
@@ -698,6 +713,12 @@ def generate_sf2_excel(request):
         
         print(f"✓ Filled {len(day_columns)} weekday columns")
         
+        # Set optimal row height for all student rows
+        for row_idx in range(boys_start_row, boys_start_row + len(boys)):
+            ws.row_dimensions[row_idx].height = 30
+        for row_idx in range(girls_start_row, girls_start_row + len(girls)):
+            ws.row_dimensions[row_idx].height = 30
+        
         def is_merged_cell(ws, row, col):
             return isinstance(ws.cell(row=row, column=col), MergedCell)
         
@@ -714,7 +735,7 @@ def generate_sf2_excel(request):
                         continue
                     
                     if is_merged_cell(ws, row_num, col_idx):
-                        print(f"  ⏭️ Skipping merged cell at {row_num},{col_idx}")
+                        print(f"    ⏭️ Skipping merged cell at {row_num},{col_idx}")
                         continue
                     
                     cell = ws.cell(row=row_num, column=col_idx)
@@ -738,20 +759,20 @@ def generate_sf2_excel(request):
                         cell.alignment = center_alignment
                         
                     elif has_am and not has_pm:
-                        # AM only - Use ◤ (upper-left triangle pointing right)
+                        # AM only - Use ◤ (upper-left triangle) positioned at top-left
                         cell.value = "◤"
-                        cell.font = green_font_large
-                        cell.alignment = fill_top_alignment
+                        cell.font = green_font_triangle
+                        cell.alignment = am_triangle_alignment
                         cell.fill = white_fill
-                        print(f"  ✓ AM triangle (◤) for day {day}")
+                        print(f"    ✓ AM triangle (◤) for day {day}")
                         
                     elif has_pm and not has_am:
-                        # PM only - Use ◢ (lower-right triangle pointing left)
+                        # PM only - Use ◢ (lower-right triangle) positioned at bottom-right
                         cell.value = "◢"
-                        cell.font = green_font_large
-                        cell.alignment = fill_bottom_alignment
+                        cell.font = green_font_triangle
+                        cell.alignment = pm_triangle_alignment
                         cell.fill = white_fill
-                        print(f"  ✓ PM triangle (◢) for day {day}")
+                        print(f"    ✓ PM triangle (◢) for day {day}")
                     
                     filled_count += 1
             
@@ -775,8 +796,8 @@ def generate_sf2_excel(request):
         print(f"📊 Total cells filled: {boys_filled + girls_filled}")
         
         return FileResponse(
-            buffer, 
-            as_attachment=True, 
+            buffer,
+            as_attachment=True,
             filename=filename,
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
@@ -792,7 +813,6 @@ def generate_sf2_excel(request):
         print("="*80)
         return Response({"error": f"Failed to generate SF2 Excel: {str(e)}"}, 
                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 
 # Add these corrected view classes at the end of your views.py file
 # Replace the existing MarkUnscannedAbsentView, BulkMarkAbsentView, and AbsenceStatsView
