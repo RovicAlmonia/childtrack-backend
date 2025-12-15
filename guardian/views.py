@@ -1,18 +1,16 @@
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework.parsers import JSONParser
 from teacher.models import TeacherProfile
 from parents.models import ParentGuardian, ParentMobileAccount
 from .models import Guardian
 from .serializers import GuardianSerializer
-import base64
-from django.core.files.base import ContentFile
 from django.db.models import Q
 
 class GuardianView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    parser_classes = [JSONParser]
 
     def patch(self, request, pk=None, **kwargs):
         """Partially update a guardian (e.g., status change)"""
@@ -37,7 +35,6 @@ class GuardianView(APIView):
                 )
             
             # Verify user is authorized to update this guardian
-            # Either they are the teacher of this guardian, or they are updating only the status field
             try:
                 teacher_profile = TeacherProfile.objects.get(user=request.user)
                 # User is a teacher, allow update if it's their guardian
@@ -57,7 +54,6 @@ class GuardianView(APIView):
                             {"error": "Parents/Guardians can only update the status field"},
                             status=status.HTTP_403_FORBIDDEN
                         )
-
             
             # Update guardian with partial data
             print(f"[PATCH DEBUG] Updating guardian {pk} with data: {request.data}")
@@ -128,7 +124,7 @@ class GuardianView(APIView):
             )
     
     def post(self, request):
-        """Register a new guardian with optional photo"""
+        """Register a new guardian with base64 photo"""
         try:
             # Get the teacher profile
             try:
@@ -163,32 +159,10 @@ class GuardianView(APIView):
                 'student_name': student_name
             }
             
-            # Handle photo upload (base64 or file)
-            photo = None
-            
-            # Check for base64 photo data
+            # Handle base64 photo if provided
             photo_base64 = request.data.get('photo_base64')
             if photo_base64:
-                try:
-                    # Remove data URL prefix if present
-                    if 'base64,' in photo_base64:
-                        photo_base64 = photo_base64.split('base64,')[1]
-                    
-                    # Decode base64 and create file
-                    photo_data = base64.b64decode(photo_base64)
-                    photo_name = f"guardian_{name.replace(' ', '_')}_{student_name.replace(' ', '_')}.jpg"
-                    photo = ContentFile(photo_data, name=photo_name)
-                    data['photo'] = photo
-                except Exception as e:
-                    print(f"Error processing base64 photo: {e}")
-                    return Response(
-                        {"error": f"Invalid photo data: {str(e)}"},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-            
-            # Check for direct file upload
-            elif 'photo' in request.FILES:
-                data['photo'] = request.FILES['photo']
+                data['photo_base64'] = photo_base64
             
             # Validate and save
             serializer = GuardianSerializer(data=data, context={'request': request})
@@ -244,21 +218,7 @@ class GuardianView(APIView):
                     status=status.HTTP_404_NOT_FOUND
                 )
             
-            # Handle photo update
-            photo_base64 = request.data.get('photo_base64')
-            if photo_base64:
-                try:
-                    if 'base64,' in photo_base64:
-                        photo_base64 = photo_base64.split('base64,')[1]
-                    
-                    photo_data = base64.b64decode(photo_base64)
-                    photo_name = f"guardian_{request.data.get('name', guardian.name).replace(' ', '_')}.jpg"
-                    photo = ContentFile(photo_data, name=photo_name)
-                    request.data['photo'] = photo
-                except Exception as e:
-                    print(f"Error processing base64 photo: {e}")
-            
-            # Update guardian
+            # Update guardian (photo_base64 will be handled by serializer)
             serializer = GuardianSerializer(
                 guardian, 
                 data=request.data, 
@@ -400,7 +360,7 @@ class ParentGuardianListView(APIView):
     Parents pass their parent_id as query parameter.
     """
     permission_classes = [permissions.AllowAny]
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    parser_classes = [JSONParser]
 
     def get(self, request):
         """Get all pending guardians for a parent's child"""
@@ -423,11 +383,10 @@ class ParentGuardianListView(APIView):
                 )
             
             # Get guardians for this parent's student
-            # Match by the student FK when set, or by student_name (case-insensitive)
             student = parent_guardian.student
             guardians = Guardian.objects.filter(
                 (Q(student=student) | Q(student_name__iexact=student.name)),
-                status='pending'  # Only show pending guardians
+                status='pending'
             ).order_by('-timestamp')
             
             serializer = GuardianSerializer(guardians, many=True, context={'request': request})
@@ -477,8 +436,6 @@ class ParentGuardianListView(APIView):
                 )
             
             # Get the guardian - verify it belongs to this parent's student
-            # Try to find the guardian by id and verify it belongs to this parent's student.
-            # Support records where the guardian.student FK is null by falling back to student_name.
             guardian_qs = Guardian.objects.filter(id=pk).filter(
                 Q(student=parent_guardian.student) | Q(student_name__iexact=parent_guardian.student.name)
             )
