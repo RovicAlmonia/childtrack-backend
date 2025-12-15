@@ -627,8 +627,8 @@ def generate_sf2_excel(request):
         red_fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
         green_fill = PatternFill(start_color='00B050', end_color='00B050', fill_type='solid')
         
-        # Increased font size by 15 points (24 + 15 = 39)
-        triangle_font = Font(color="00B050", size=39, bold=True)
+        # Optimized font size for perfect fit in square cells
+        triangle_font = Font(color="00B050", size=28, bold=True)
         
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
@@ -664,7 +664,7 @@ def generate_sf2_excel(request):
         
         # Lock column widths for consistent triangle rendering
         # Set a uniform width for date columns to create square cells
-        ATTENDANCE_COLUMN_WIDTH = 3.0  # Narrower width to create square cells for perfect triangles
+        ATTENDANCE_COLUMN_WIDTH = 3.5  # Optimal width for triangle display
         
         def unmerge_and_write(ws, row, col, value, alignment=None):
             cell_coord = ws.cell(row=row, column=col).coordinate
@@ -711,7 +711,7 @@ def generate_sf2_excel(request):
         
         # Lock row heights for consistent triangle display
         # Match row height to column width for square cells (perfect diagonal triangles)
-        ROW_HEIGHT = 20  # Creates square cells when combined with column width 3.0
+        ROW_HEIGHT = 22  # Creates square cells optimized for 28pt triangles
         
         def is_merged_cell(ws, row, col):
             return isinstance(ws.cell(row=row, column=col), MergedCell)
