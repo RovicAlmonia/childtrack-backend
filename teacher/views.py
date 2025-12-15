@@ -633,20 +633,22 @@ def generate_sf2_excel(request):
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
         
-        # Position triangles with middle vertical alignment and slightly inset horizontal alignment
+        # LOCKED TRIANGLE POSITIONS - Perfect alignment settings
         am_triangle_alignment = Alignment(
             horizontal='left', 
             vertical='center',
             indent=1,
             wrap_text=False,
-            shrink_to_fit=False
+            shrink_to_fit=False,
+            text_rotation=0
         )
         pm_triangle_alignment = Alignment(
             horizontal='center', 
             vertical='center',
             indent=0,
             wrap_text=False,
-            shrink_to_fit=False
+            shrink_to_fit=False,
+            text_rotation=0
         )
         
         if wb.sheetnames:
@@ -659,6 +661,10 @@ def generate_sf2_excel(request):
         date_row, day_row = 11, 12
         boys_start_row, girls_start_row = 14, 36
         name_column, first_day_column = 2, 4
+        
+        # Lock column widths for consistent triangle rendering
+        # Set a uniform width for date columns
+        ATTENDANCE_COLUMN_WIDTH = 5.5  # Optimal width for triangle display
         
         def unmerge_and_write(ws, row, col, value, alignment=None):
             cell_coord = ws.cell(row=row, column=col).coordinate
@@ -691,12 +697,20 @@ def generate_sf2_excel(request):
                 day_columns[day] = current_col
                 unmerge_and_write(ws, date_row, current_col, day, center_alignment)
                 unmerge_and_write(ws, day_row, current_col, day_names_short[weekday], center_alignment)
-                print(f"  Day {day:2d} ({current_date}) mapped to column {current_col}")
+                
+                # Lock column width for consistent triangle positioning
+                col_letter = ws.cell(row=1, column=current_col).column_letter
+                ws.column_dimensions[col_letter].width = ATTENDANCE_COLUMN_WIDTH
+                
+                print(f"  Day {day:2d} ({current_date}) mapped to column {current_col} (width locked)")
                 current_col += 1
             else:
                 print(f"  Day {day:2d} ({current_date}) WEEKEND - skipped")
         
-        print(f"✓ Filled {len(day_columns)} weekday columns")
+        print(f"✓ Filled {len(day_columns)} weekday columns with locked widths")
+        
+        # Lock row heights for consistent triangle display
+        ROW_HEIGHT = 18  # Optimal height for 39pt triangles
         
         def is_merged_cell(ws, row, col):
             return isinstance(ws.cell(row=row, column=col), MergedCell)
@@ -705,7 +719,11 @@ def generate_sf2_excel(request):
             filled_count = 0
             for idx, name in enumerate(students_list):
                 row_num = start_row + idx
-                print(f"  Processing student: {name} at row {row_num}")
+                
+                # Lock row height for consistent triangle positioning
+                ws.row_dimensions[row_num].height = ROW_HEIGHT
+                
+                print(f"  Processing student: {name} at row {row_num} (height locked)")
                 
                 unmerge_and_write(ws, row_num, name_column, name, left_alignment)
                 
@@ -735,13 +753,13 @@ def generate_sf2_excel(request):
                         cell.font = triangle_font
                         cell.alignment = am_triangle_alignment
                         cell.number_format = '@'
-                        print(f"    ✓ AM triangle (◤) for day {day}")
+                        print(f"    ✓ AM triangle (◤) for day {day} - LOCKED POSITION")
                     elif has_pm and not has_am:
                         cell.value = "◢"
                         cell.font = triangle_font
                         cell.alignment = pm_triangle_alignment
                         cell.number_format = '@'
-                        print(f"    ✓ PM triangle (◢) for day {day}")
+                        print(f"    ✓ PM triangle (◢) for day {day} - LOCKED POSITION")
                     
                     filled_count += 1
             
@@ -749,11 +767,15 @@ def generate_sf2_excel(request):
         
         print(f"\n👦 Filling boys section starting at row {boys_start_row}")
         boys_filled = fill_student_attendance(boys, boys_start_row)
-        print(f"✓ Filled {boys_filled} cells for boys")
+        print(f"✓ Filled {boys_filled} cells for boys with locked dimensions")
         
         print(f"\n👧 Filling girls section starting at row {girls_start_row}")
         girls_filled = fill_student_attendance(girls, girls_start_row)
-        print(f"✓ Filled {girls_filled} cells for girls")
+        print(f"✓ Filled {girls_filled} cells for girls with locked dimensions")
+        
+        # Enable sheet protection to lock formatting (optional)
+        # ws.protection.sheet = True
+        # ws.protection.password = None  # No password, just lock structure
         
         buffer = io.BytesIO()
         wb.save(buffer)
@@ -763,6 +785,7 @@ def generate_sf2_excel(request):
         
         print(f"\n✅ SF2 generated successfully: {filename}")
         print(f"📊 Total cells filled: {boys_filled + girls_filled}")
+        print(f"🔒 All triangle positions LOCKED with uniform dimensions")
         
         return FileResponse(
             buffer,
