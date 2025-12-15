@@ -625,11 +625,12 @@ def generate_sf2_excel(request):
 
         red_fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
         green_fill = PatternFill(start_color='00B050', end_color='00B050', fill_type='solid')
-
+        # Bigger triangle font for full diagonal
+        triangle_font = Font(color="00B050", size=36, bold=True)
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
 
-        # Triangle alignments
+        # Triangle alignment
         am_triangle_alignment = Alignment(horizontal='left', vertical='top')
         pm_triangle_alignment = Alignment(horizontal='right', vertical='bottom')
 
@@ -681,20 +682,6 @@ def generate_sf2_excel(request):
         def is_merged_cell(ws, row, col):
             return isinstance(ws.cell(row=row, column=col), MergedCell)
 
-        def calculate_triangle_font_size(ws, row, col):
-            """
-            Dynamically calculate a font size that fills the diagonal of the cell.
-            """
-            # Column width in Excel units (approx 1 unit = 7 pixels)
-            col_width = ws.column_dimensions[ws.cell(row=row, column=col).column_letter].width or 10
-            row_height = ws.row_dimensions[row].height or 15  # default row height
-
-            # Approximate max size in points
-            width_px = col_width * 7
-            height_px = row_height * 1.33  # 1 point ~ 1.33 pixels
-            size = int(min(width_px, height_px))
-            return max(12, size)  # minimum font size 12
-
         def fill_student_attendance(students_list, start_row):
             filled_count = 0
             for idx, name in enumerate(students_list):
@@ -711,7 +698,6 @@ def generate_sf2_excel(request):
                     has_am = attendance_data[name]['days'][day]['am']
                     has_pm = attendance_data[name]['days'][day]['pm']
 
-                    # Reset
                     cell.value = None
                     cell.fill = PatternFill(fill_type=None)
                     cell.font = Font()
@@ -723,16 +709,14 @@ def generate_sf2_excel(request):
                         cell.fill = green_fill
                     elif has_am and not has_pm:
                         cell.value = "◤"
-                        font_size = calculate_triangle_font_size(ws, row_num, col_idx)
-                        cell.font = Font(color="00B050", size=font_size, bold=True)
+                        cell.font = triangle_font
                         cell.alignment = am_triangle_alignment
-                        print(f"    ✓ AM triangle (◤) for day {day} size {font_size}")
+                        print(f"    ✓ AM triangle (◤) for day {day}")
                     elif has_pm and not has_am:
                         cell.value = "◢"
-                        font_size = calculate_triangle_font_size(ws, row_num, col_idx)
-                        cell.font = Font(color="00B050", size=font_size, bold=True)
+                        cell.font = triangle_font
                         cell.alignment = pm_triangle_alignment
-                        print(f"    ✓ PM triangle (◢) for day {day} size {font_size}")
+                        print(f"    ✓ PM triangle (◢) for day {day}")
                     filled_count += 1
             return filled_count
 
@@ -765,6 +749,7 @@ def generate_sf2_excel(request):
         print("="*80)
         return Response({"error": f"Failed to generate SF2 Excel: {str(e)}"},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 # Add these corrected view classes at the end of your views.py file
 # Replace the existing MarkUnscannedAbsentView, BulkMarkAbsentView, and AbsenceStatsView
 from rest_framework.views import APIView
