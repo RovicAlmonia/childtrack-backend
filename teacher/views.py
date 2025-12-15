@@ -16,6 +16,10 @@ from .serializers import (
     UnauthorizedPersonSerializer,
     ScanPhotoSerializer
 )
+try:
+    from openpyxl.cell.cell import MergedCell
+except ImportError:
+    MergedCell = type(None)  # fallback so isinstance won't fail
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Alignment, Font
 from openpyxl.drawing.fill import GradientFillProperties, GradientStop
