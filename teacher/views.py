@@ -627,23 +627,23 @@ def generate_sf2_excel(request):
         red_fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
         green_fill = PatternFill(start_color='00B050', end_color='00B050', fill_type='solid')
         
-        # Slightly bigger font for better visibility
-        triangle_font = Font(color="00B050", size=24, bold=True)
+        # Increased font size by 15 points (24 + 15 = 39)
+        triangle_font = Font(color="00B050", size=39, bold=True)
         
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
         
-        # Position triangles flush against cell borders
+        # Position triangles with middle vertical alignment and left/right horizontal alignment
         am_triangle_alignment = Alignment(
             horizontal='left', 
-            vertical='top',
+            vertical='center',
             indent=0,
             wrap_text=False,
             shrink_to_fit=False
         )
         pm_triangle_alignment = Alignment(
             horizontal='right', 
-            vertical='bottom',
+            vertical='center',
             indent=0,
             wrap_text=False,
             shrink_to_fit=False
