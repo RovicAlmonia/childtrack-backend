@@ -1,7 +1,9 @@
 from rest_framework import serializers
 import base64
 from django.core.files.base import ContentFile
+import uuid
 from .models import Guardian
+
 
 class GuardianSerializer(serializers.ModelSerializer):
     photo_base64 = serializers.CharField(write_only=True, required=False, allow_blank=True)
@@ -79,30 +81,44 @@ class GuardianSerializer(serializers.ModelSerializer):
         return value
     
     def create(self, validated_data):
-        """Handle base64 photo conversion on create"""
+        """Handle base64 photo conversion on create - FIXED VERSION"""
         photo_base64 = validated_data.pop('photo_base64', None)
         
-        # Create the guardian instance
+        # Create the guardian instance WITHOUT photo first
         guardian = Guardian.objects.create(**validated_data)
         
         # Handle photo if provided
         if photo_base64:
             try:
-                # Remove data URI prefix if present
+                # Remove data URI prefix if present (already validated but double-check)
                 if 'base64,' in photo_base64:
                     photo_base64 = photo_base64.split('base64,')[1]
                 
-                # Decode and save
+                # Decode base64 string to BYTES (this is the critical fix)
                 photo_data = base64.b64decode(photo_base64)
-                photo_name = f"guardian_{guardian.name.replace(' ', '_')}_{guardian.student_name.replace(' ', '_')}.jpg"
-                guardian.photo.save(photo_name, ContentFile(photo_data), save=True)
+                
+                # Generate safe filename with UUID
+                safe_name = guardian.name.replace(' ', '_')[:30]
+                safe_student = guardian.student_name.replace(' ', '_')[:30]
+                unique_id = uuid.uuid4().hex[:8]
+                filename = f"guardian_{safe_name}_{safe_student}_{unique_id}.jpg"
+                
+                # Create ContentFile from bytes and save
+                photo_file = ContentFile(photo_data, name=filename)
+                guardian.photo.save(filename, photo_file, save=True)
+                
+                print(f"✅ Photo saved successfully: {filename} ({len(photo_data)} bytes)")
+                
             except Exception as e:
-                print(f"Error saving photo: {e}")
+                print(f"⚠️ Error saving photo: {type(e).__name__}: {e}")
+                # Don't fail the entire request if photo save fails
+        else:
+            print("ℹ️ No photo provided in request")
         
         return guardian
     
     def update(self, instance, validated_data):
-        """Handle base64 photo conversion on update"""
+        """Handle base64 photo conversion on update - FIXED VERSION"""
         photo_base64 = validated_data.pop('photo_base64', None)
         
         # Update other fields
@@ -112,16 +128,33 @@ class GuardianSerializer(serializers.ModelSerializer):
         # Handle photo if provided
         if photo_base64:
             try:
+                # Remove old photo if exists
+                if instance.photo:
+                    old_photo_path = instance.photo.path
+                    instance.photo.delete(save=False)
+                    print(f"🗑️ Deleted old photo: {old_photo_path}")
+                
                 # Remove data URI prefix if present
                 if 'base64,' in photo_base64:
                     photo_base64 = photo_base64.split('base64,')[1]
                 
-                # Decode and save
+                # Decode base64 string to BYTES
                 photo_data = base64.b64decode(photo_base64)
-                photo_name = f"guardian_{instance.name.replace(' ', '_')}_{instance.student_name.replace(' ', '_')}.jpg"
-                instance.photo.save(photo_name, ContentFile(photo_data), save=False)
+                
+                # Generate safe filename with UUID
+                safe_name = instance.name.replace(' ', '_')[:30]
+                safe_student = instance.student_name.replace(' ', '_')[:30]
+                unique_id = uuid.uuid4().hex[:8]
+                filename = f"guardian_{safe_name}_{safe_student}_{unique_id}.jpg"
+                
+                # Create ContentFile from bytes and save
+                photo_file = ContentFile(photo_data, name=filename)
+                instance.photo.save(filename, photo_file, save=False)
+                
+                print(f"✅ Photo updated successfully: {filename} ({len(photo_data)} bytes)")
+                
             except Exception as e:
-                print(f"Error saving photo: {e}")
+                print(f"⚠️ Error updating photo: {type(e).__name__}: {e}")
         
         instance.save()
         return instance
@@ -136,8 +169,9 @@ class GuardianSerializer(serializers.ModelSerializer):
                 with instance.photo.open('rb') as photo_file:
                     photo_base64 = base64.b64encode(photo_file.read()).decode('utf-8')
                     representation['photo_base64'] = photo_base64
+                    print(f"📤 Sending photo in response: {len(photo_base64)} chars")
             except Exception as e:
-                print(f"Error reading photo: {e}")
+                print(f"⚠️ Error reading photo: {e}")
                 representation['photo_base64'] = None
         else:
             representation['photo_base64'] = None
