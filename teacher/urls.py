@@ -26,6 +26,8 @@ from .views import (
     generate_sf2_excel,
 
      ScanPhotoView,
+
+    MarkUnscannedAbsentView, BulkMarkAbsentView, AbsenceStatsView,
 )
 
 urlpatterns = [
@@ -80,7 +82,14 @@ urlpatterns = [
     # Generate SF2 Excel report (POST only)
     path('reports/sf2/', generate_sf2_excel, name='generate-sf2'),
 
-      path('scan-photos/', ScanPhotoView.as_view(), name='scan-photos'),
+    path('scan-photos/', ScanPhotoView.as_view(), name='scan-photos'),
+
+    path('mark-unscanned-absent/', MarkUnscannedAbsentView.as_view(), name='mark-unscanned-absent'),
+
+    path('bulk-mark-absent/', BulkMarkAbsentView.as_view(), name='bulk-mark-absent'),
+    
+    path('absence-stats/', AbsenceStatsView.as_view(), name='absence-stats'),
 ]
+
 
 
