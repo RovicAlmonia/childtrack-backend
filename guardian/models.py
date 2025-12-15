@@ -3,63 +3,29 @@ from teacher.models import TeacherProfile
 from parents.models import ParentGuardian, Student
 
 class Guardian(models.Model):
-    STATUS_CHOICES = [
-        ('pending', 'Pending'),
-        ('allowed', 'Allowed'),
-        ('declined', 'Declined'),
-    ]
-    
-    teacher = models.ForeignKey(
-        TeacherProfile, 
-        on_delete=models.CASCADE, 
-        related_name='guardians'
-    )
-    # Link to the parent/guardian who registered this guardian
-    parent_guardian = models.ForeignKey(
-        ParentGuardian,
-        on_delete=models.CASCADE,
-        related_name='registered_guardians',
-        null=True,
-        blank=True
-    )
-    # Link to the student
-    student = models.ForeignKey(
-        Student,
-        on_delete=models.CASCADE,
-        related_name='guardians',
-        null=True,
-        blank=True
-    )
-    name = models.CharField(max_length=255)
+    teacher = models.ForeignKey("TeacherProfile", on_delete=models.CASCADE, related_name='guardians')
+    parent_guardian = models.ForeignKey("ParentGuardian", on_delete=models.SET_NULL, null=True, blank=True)
+    student = models.ForeignKey("Student", on_delete=models.SET_NULL, null=True, blank=True)
+    name = models.CharField(max_length=100)
     age = models.IntegerField()
-    address = models.TextField(blank=True, null=True)
-    relationship = models.CharField(max_length=100, blank=True, null=True)
-    contact = models.CharField(max_length=50, blank=True, null=True)
-    student_name = models.CharField(max_length=255)
-    photo = models.ImageField(
-        upload_to='guardian_photos/', 
-        blank=True, 
-        null=True,
-        help_text='Guardian photo'
-    )
+    address = models.TextField(blank=True)
+    relationship = models.CharField(max_length=50, blank=True)
+    contact = models.CharField(max_length=20, blank=True)
+    student_name = models.CharField(max_length=100)
+    photo = models.TextField(blank=True)  # Store base64 encoded image
     status = models.CharField(
         max_length=20,
-        choices=STATUS_CHOICES,
-        default='pending',
-        help_text='Approval status of the guardian'
+        choices=[
+            ('pending', 'Pending'),
+            ('allowed', 'Allowed'),
+            ('declined', 'Declined')
+        ],
+        default='pending'
     )
     timestamp = models.DateTimeField(auto_now_add=True)
     
     class Meta:
         ordering = ['-timestamp']
-        verbose_name = 'Guardian'
-        verbose_name_plural = 'Guardians'
     
     def __str__(self):
-        return f"{self.name} - Guardian of {self.student_name} ({self.get_status_display()})"
-    
-    def get_photo_url(self):
-        """Get the full URL for the photo"""
-        if self.photo:
-            return self.photo.url
-        return None
+        return f"{self.name} - {self.student_name}"
