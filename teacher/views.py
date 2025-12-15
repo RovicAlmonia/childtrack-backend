@@ -534,71 +534,71 @@ def generate_sf2_excel(request):
     Generate SF2 Excel report with attendance data for a specific month.
     Separates students by gender: Boys start at row 14, Girls start at row 36.
     ONLY WEEKDAYS (Monday-Friday) are included in the calendar.
-
+    
     NAME FORMAT:
-        - Column B (Row 14+): FULL NAME (Last Name, First Name Middle Name)
-
+    - Column B (Row 14+): FULL NAME (Last Name, First Name Middle Name)
+    
     Visual Legend:
-        - AM Present (Morning): Green triangle ◤ - Top-left inside cell
-        - PM Present (Afternoon): Green triangle ◢ - Bottom-right inside cell
-        - Full Day Present (AM + PM): Solid green fill
-        - Absent: Solid red fill
-
+    - AM Present (Morning): Green triangle ◣ (top-left diagonal fill)
+    - PM Present (Afternoon): Green triangle ◥ (bottom-right diagonal fill)
+    - Full Day Present (AM + PM): Solid green fill
+    - Absent: Solid red fill
+    
     Request Parameters:
-        - template_file: Excel template file (multipart/form-data)
-        - month: Optional, integer 1-12 (defaults to current month)
-        - year: Optional, integer (defaults to current year)
+    - template_file: Excel template file (multipart/form-data)
+    - month: Optional, integer 1-12 (defaults to current month)
+    - year: Optional, integer (defaults to current year)
     """
     try:
         teacher_profile = TeacherProfile.objects.get(user=request.user)
-
         template_file = request.FILES.get('template_file')
+        
         if not template_file:
-            return Response({"error": "Please upload an SF2 template file."},
-                            status=status.HTTP_400_BAD_REQUEST)
-
+            return Response({"error": "Please upload an SF2 template file."}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
         try:
             wb = load_workbook(template_file)
         except Exception as e:
-            return Response({"error": f"Failed to load Excel template: {str(e)}"},
-                            status=status.HTTP_400_BAD_REQUEST)
-
+            return Response({"error": f"Failed to load Excel template: {str(e)}"}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
         try:
             month = int(request.POST.get('month', datetime.now().month))
             year = int(request.POST.get('year', datetime.now().year))
         except ValueError:
-            return Response({"error": "Invalid month or year parameter"},
-                            status=status.HTTP_400_BAD_REQUEST)
-
+            return Response({"error": "Invalid month or year parameter"}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
         if month < 1 or month > 12:
-            return Response({"error": "Month must be between 1 and 12"},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-        month_names = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN",
-                       "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+            return Response({"error": "Month must be between 1 and 12"}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
+        month_names = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", 
+                      "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
         day_names_short = ["Mon", "Tue", "Wed", "Thu", "Fri"]
-
+        
         attendances = Attendance.objects.filter(
             teacher=teacher_profile,
             date__year=year,
             date__month=month
         ).order_by('date', 'timestamp')
-
+        
         print(f"📊 Fetching attendance for: {month_names[month-1]} {year}")
         print(f"📝 Found {attendances.count()} attendance records")
-
+        
         attendance_data = defaultdict(
             lambda: {'days': defaultdict(lambda: {'am': False, 'pm': False}), 'gender': None}
         )
         students_dict = {}
-
+        
         for att in attendances:
             student_name = att.student_name
             day = att.date.day
-
+            
             if student_name not in students_dict:
                 students_dict[student_name] = getattr(att, 'gender', 'Male')
-
+            
             if hasattr(att, 'session') and att.session:
                 session = att.session.upper()
             elif att.timestamp:
@@ -606,45 +606,75 @@ def generate_sf2_excel(request):
                 session = 'AM' if ph_time.hour < 12 else 'PM'
             else:
                 session = 'AM'
-
+            
             if att.status and att.status.lower() != 'absent':
                 if session == 'AM':
                     attendance_data[student_name]['days'][day]['am'] = True
                 elif session == 'PM':
                     attendance_data[student_name]['days'][day]['pm'] = True
-
+            
             attendance_data[student_name]['gender'] = students_dict[student_name]
-
+        
         boys = sorted([name for name, gender in students_dict.items() if gender.lower() == 'male'])
         girls = sorted([name for name, gender in students_dict.items() if gender.lower() == 'female'])
+        
         print(f"👦 Boys: {len(boys)} students")
         print(f"👧 Girls: {len(girls)} students")
-
+        
         now = datetime.now()
         current_day, current_month, current_year = now.day, now.month, now.year
-
+        
         red_fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
         green_fill = PatternFill(start_color='00B050', end_color='00B050', fill_type='solid')
-        # Bigger triangle font for full diagonal
-        triangle_font = Font(color="00B050", size=36, bold=True)
+        
+        # Diagonal border styles for perfect triangles
+        # AM triangle: diagonal from top-left, green fill on top half
+        am_border = Border(
+            left=Side(style='thin', color='000000'),
+            right=Side(style='thin', color='000000'),
+            top=Side(style='thin', color='000000'),
+            bottom=Side(style='thin', color='000000'),
+            diagonal=Side(style='medium', color='00B050'),
+            diagonalUp=False,
+            diagonalDown=True
+        )
+        
+        # PM triangle: diagonal from bottom-left, green fill on bottom half
+        pm_border = Border(
+            left=Side(style='thin', color='000000'),
+            right=Side(style='thin', color='000000'),
+            top=Side(style='thin', color='000000'),
+            bottom=Side(style='thin', color='000000'),
+            diagonal=Side(style='medium', color='00B050'),
+            diagonalUp=True,
+            diagonalDown=False
+        )
+        
+        # Regular thin border for other cells
+        thin_border = Border(
+            left=Side(style='thin', color='000000'),
+            right=Side(style='thin', color='000000'),
+            top=Side(style='thin', color='000000'),
+            bottom=Side(style='thin', color='000000')
+        )
+        
+        # Light green fill for triangle cells
+        light_green_fill = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid')
+        
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
-
-        # Triangle alignment
-        am_triangle_alignment = Alignment(horizontal='left', vertical='top')
-        pm_triangle_alignment = Alignment(horizontal='right', vertical='bottom')
-
+        
         if wb.sheetnames:
             ws = wb[wb.sheetnames[0]]
             print(f"📄 Processing sheet: {ws.title}")
         else:
-            return Response({"error": "No sheets found in template"},
-                            status=status.HTTP_400_BAD_REQUEST)
-
+            return Response({"error": "No sheets found in template"}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
         date_row, day_row = 11, 12
         boys_start_row, girls_start_row = 14, 36
         name_column, first_day_column = 2, 4
-
+        
         def unmerge_and_write(ws, row, col, value, alignment=None):
             cell_coord = ws.cell(row=row, column=col).coordinate
             for merged_range in list(ws.merged_cells.ranges):
@@ -652,23 +682,26 @@ def generate_sf2_excel(request):
                     ws.unmerge_cells(str(merged_range))
                     print(f"  🔓 Unmerged {merged_range}")
                     break
+            
             cell = ws.cell(row=row, column=col)
             if isinstance(cell, MergedCell):
                 del ws._cells[(row, col)]
                 cell = ws.cell(row=row, column=col)
+            
             cell.value = value
             if alignment:
                 cell.alignment = alignment
             return cell
-
+        
         days_in_month = monthrange(year, month)[1]
         day_columns = {}
         current_col = first_day_column
-
+        
         print("\n📅 Filling weekday calendar headers (Mon-Fri only)...")
         for day in range(1, days_in_month + 1):
             current_date = date(year, month, day)
             weekday = current_date.weekday()
+            
             if weekday < 5:
                 day_columns[day] = current_col
                 unmerge_and_write(ws, date_row, current_col, day, center_alignment)
@@ -677,79 +710,98 @@ def generate_sf2_excel(request):
                 current_col += 1
             else:
                 print(f"  Day {day:2d} ({current_date}) WEEKEND - skipped")
+        
         print(f"✓ Filled {len(day_columns)} weekday columns")
-
+        
         def is_merged_cell(ws, row, col):
             return isinstance(ws.cell(row=row, column=col), MergedCell)
-
+        
         def fill_student_attendance(students_list, start_row):
             filled_count = 0
             for idx, name in enumerate(students_list):
                 row_num = start_row + idx
                 print(f"  Processing student: {name} at row {row_num}")
+                
                 unmerge_and_write(ws, row_num, name_column, name, left_alignment)
+                
                 for day, col_idx in day_columns.items():
                     if year == current_year and month == current_month and day > current_day:
                         continue
+                    
                     if is_merged_cell(ws, row_num, col_idx):
-                        print(f"    ⏭️ Skipping merged cell at {row_num},{col_idx}")
+                        print(f"  ⏭️ Skipping merged cell at {row_num},{col_idx}")
                         continue
+                    
                     cell = ws.cell(row=row_num, column=col_idx)
                     has_am = attendance_data[name]['days'][day]['am']
                     has_pm = attendance_data[name]['days'][day]['pm']
-
+                    
+                    # Clear cell first
                     cell.value = None
                     cell.fill = PatternFill(fill_type=None)
                     cell.font = Font()
                     cell.alignment = center_alignment
-
+                    cell.border = thin_border
+                    
                     if not has_am and not has_pm:
+                        # Absent - solid red
                         cell.fill = red_fill
+                        cell.border = thin_border
                     elif has_am and has_pm:
+                        # Full day present - solid green
                         cell.fill = green_fill
+                        cell.border = thin_border
                     elif has_am and not has_pm:
-                        cell.value = "◤"
-                        cell.font = triangle_font
-                        cell.alignment = am_triangle_alignment
-                        print(f"    ✓ AM triangle (◤) for day {day}")
+                        # AM only - diagonal line creates top-left triangle
+                        cell.fill = light_green_fill
+                        cell.border = am_border
+                        print(f"  ✓ AM triangle (diagonal border) for day {day}")
                     elif has_pm and not has_am:
-                        cell.value = "◢"
-                        cell.font = triangle_font
-                        cell.alignment = pm_triangle_alignment
-                        print(f"    ✓ PM triangle (◢) for day {day}")
+                        # PM only - diagonal line creates bottom-right triangle
+                        cell.fill = light_green_fill
+                        cell.border = pm_border
+                        print(f"  ✓ PM triangle (diagonal border) for day {day}")
+                    
                     filled_count += 1
+            
             return filled_count
-
+        
         print(f"\n👦 Filling boys section starting at row {boys_start_row}")
         boys_filled = fill_student_attendance(boys, boys_start_row)
         print(f"✓ Filled {boys_filled} cells for boys")
-
+        
         print(f"\n👧 Filling girls section starting at row {girls_start_row}")
         girls_filled = fill_student_attendance(girls, girls_start_row)
         print(f"✓ Filled {girls_filled} cells for girls")
-
+        
         buffer = io.BytesIO()
         wb.save(buffer)
         buffer.seek(0)
-
+        
         filename = f"SF2_{month_names[month-1]}_{year}_{teacher_profile.section.replace(' ', '_')}.xlsx"
+        
         print(f"\n✅ SF2 generated successfully: {filename}")
         print(f"📊 Total cells filled: {boys_filled + girls_filled}")
-
-        return FileResponse(buffer, as_attachment=True, filename=filename,
-                            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-
+        
+        return FileResponse(
+            buffer, 
+            as_attachment=True, 
+            filename=filename,
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        
     except TeacherProfile.DoesNotExist:
-        return Response({"error": "Teacher profile not found"}, status=status.HTTP_404_NOT_FOUND)
+        return Response({"error": "Teacher profile not found"}, 
+                       status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         import traceback
         print("="*80)
         print("SF2 Generation Error:")
         print(traceback.format_exc())
         print("="*80)
-        return Response({"error": f"Failed to generate SF2 Excel: {str(e)}"},
-                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+        return Response({"error": f"Failed to generate SF2 Excel: {str(e)}"}, 
+                       status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
 # Add these corrected view classes at the end of your views.py file
 # Replace the existing MarkUnscannedAbsentView, BulkMarkAbsentView, and AbsenceStatsView
 from rest_framework.views import APIView
