@@ -563,6 +563,41 @@ def generate_sf2_excel(request):
         except Exception as e:
             return Response({"error": f"Failed to load Excel template: {str(e)}"}, 
                           status=status.HTTP_400_BAD_REQUEST)
+        @api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def generate_sf2_excel(request):
+    """
+    Generate SF2 Excel report with attendance data for a specific month.
+    Separates students by gender: Boys start at row 14, Girls start at row 36.
+    ONLY WEEKDAYS (Monday-Friday) are included in the calendar.
+    
+    NAME FORMAT:
+    - Column B (Row 14+): FULL NAME (Last Name, First Name Middle Name)
+    
+    Visual Legend:
+    - AM Present (Morning): Green triangle ◤ - Top-left inside cell
+    - PM Present (Afternoon): Green triangle ◢ - Bottom-right inside cell
+    - Full Day Present (AM + PM): Solid green fill
+    - Absent: Solid red fill
+    
+    Request Parameters:
+    - template_file: Excel template file (multipart/form-data)
+    - month: Optional, integer 1-12 (defaults to current month)
+    - year: Optional, integer (defaults to current year)
+    """
+    try:
+        teacher_profile = TeacherProfile.objects.get(user=request.user)
+        template_file = request.FILES.get('template_file')
+        
+        if not template_file:
+            return Response({"error": "Please upload an SF2 template file."}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            wb = load_workbook(template_file)
+        except Exception as e:
+            return Response({"error": f"Failed to load Excel template: {str(e)}"}, 
+                          status=status.HTTP_400_BAD_REQUEST)
         
         try:
             month = int(request.POST.get('month', datetime.now().month))
@@ -634,9 +669,21 @@ def generate_sf2_excel(request):
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
         
-        # Proper triangle alignment
-        am_triangle_alignment = Alignment(horizontal='left', vertical='top')
-        pm_triangle_alignment = Alignment(horizontal='right', vertical='bottom')
+        # Position triangles flush against cell borders
+        am_triangle_alignment = Alignment(
+            horizontal='left', 
+            vertical='top',
+            indent=0,
+            wrap_text=False,
+            shrink_to_fit=False
+        )
+        pm_triangle_alignment = Alignment(
+            horizontal='right', 
+            vertical='bottom',
+            indent=0,
+            wrap_text=False,
+            shrink_to_fit=False
+        )
         
         if wb.sheetnames:
             ws = wb[wb.sheetnames[0]]
@@ -723,11 +770,13 @@ def generate_sf2_excel(request):
                         cell.value = "◤"
                         cell.font = triangle_font
                         cell.alignment = am_triangle_alignment
+                        cell.number_format = '@'  # Force text format
                         print(f"    ✓ AM triangle (◤) for day {day}")
                     elif has_pm and not has_am:
                         cell.value = "◢"
                         cell.font = triangle_font
                         cell.alignment = pm_triangle_alignment
+                        cell.number_format = '@'  # Force text format
                         print(f"    ✓ PM triangle (◢) for day {day}")
                     
                     filled_count += 1
