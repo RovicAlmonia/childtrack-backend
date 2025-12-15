@@ -527,14 +527,11 @@ def unauthorized_person_detail(request, pk):
 @permission_classes([permissions.IsAuthenticated])
 def generate_sf2_excel(request):
     """
-    Generate SF2 Excel report with attendance data for a specific month.
-    FIXED: Properly writes inside template boxes with correct row/column mapping.
+    Generate SF2 Excel report - ROBUST version that handles various template formats
     """
     try:
-        # Get authenticated teacher profile
         teacher_profile = TeacherProfile.objects.get(user=request.user)
 
-        # Validate template file upload
         template_file = request.FILES.get('template_file')
         if not template_file:
             return Response(
@@ -542,7 +539,6 @@ def generate_sf2_excel(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Load the Excel workbook
         try:
             wb = load_workbook(template_file)
         except Exception as e:
@@ -551,7 +547,6 @@ def generate_sf2_excel(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Get and validate month/year parameters
         try:
             month = int(request.POST.get('month', datetime.now().month))
             year = int(request.POST.get('year', datetime.now().year))
@@ -567,11 +562,10 @@ def generate_sf2_excel(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Month names
         month_names = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN",
                       "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
 
-        # Fetch attendance records for the SPECIFIC MONTH only
+        # Fetch attendance records
         attendances = Attendance.objects.filter(
             teacher=teacher_profile,
             date__year=year,
@@ -581,19 +575,16 @@ def generate_sf2_excel(request):
         print(f"📊 Fetching attendance for: {month_names[month-1]} {year}")
         print(f"📝 Found {attendances.count()} attendance records")
 
-        # Build attendance data structure
+        # Build attendance data
         attendance_data = defaultdict(
             lambda: {'days': defaultdict(lambda: {'am': False, 'pm': False}), 'gender': None}
         )
+        students_dict = {}
 
-        students_dict = {}  # {name: gender}
-
-        # Process each attendance record
         for att in attendances:
             student_name = att.student_name
             day = att.date.day
 
-            # Store student gender
             if student_name not in students_dict:
                 students_dict[student_name] = att.gender if hasattr(att, 'gender') and att.gender else 'Male'
 
@@ -606,7 +597,7 @@ def generate_sf2_excel(request):
             else:
                 session = 'AM'
 
-            # Mark attendance (skip 'Absent' status)
+            # Mark attendance (skip 'Absent')
             if att.status and att.status.lower() != 'absent':
                 if session == 'AM':
                     attendance_data[student_name]['days'][day]['am'] = True
@@ -615,7 +606,7 @@ def generate_sf2_excel(request):
 
             attendance_data[student_name]['gender'] = students_dict[student_name]
 
-        # Separate students by gender and sort alphabetically
+        # Separate by gender
         boys = sorted([name for name, gender in students_dict.items() 
                       if gender and gender.lower() == 'male'])
         girls = sorted([name for name, gender in students_dict.items() 
@@ -624,22 +615,19 @@ def generate_sf2_excel(request):
         print(f"👦 Boys: {len(boys)} students")
         print(f"👧 Girls: {len(girls)} students")
 
-        # Get current date for future date filtering
+        # Get current date
         now = datetime.now()
         current_day = now.day
         current_year = now.year
         current_month = now.month
 
-        # Define cell styling
+        # Define styling
         red_fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
         green_fill = PatternFill(start_color='00B050', end_color='00B050', fill_type='solid')
-
-        # Triangle styling
         triangle_font = Font(color="00B050", size=48, bold=True)
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
 
-        # AM triangle alignment (◤)
         am_triangle_alignment = Alignment(
             horizontal='justify',
             vertical='center',
@@ -647,7 +635,6 @@ def generate_sf2_excel(request):
             shrink_to_fit=False
         )
 
-        # PM triangle alignment (◢)
         pm_triangle_alignment = Alignment(
             horizontal='left',
             vertical='center',
@@ -655,73 +642,148 @@ def generate_sf2_excel(request):
             shrink_to_fit=False
         )
 
-        # Use the first sheet
+        # Use first sheet
         ws = wb[wb.sheetnames[0]]
         print(f"📄 Processing sheet: {wb.sheetnames[0]}")
 
-        # ===== CRITICAL FIX: Template Configuration =====
-        # These MUST match your actual Excel template structure
-        date_row = 11           # Row 11: Date numbers
-        day_row = 12            # Row 12: Day names
-        boys_start_row = 14     # Row 14: BOYS first student
-        girls_start_row = 36    # Row 36: GIRLS first student
-        name_column = 2         # Column B for student names
-        first_day_column = 4    # Column D where day 1 attendance starts
-
-        # ===== NEW: Read existing dates from template =====
-        # The template already has dates/days filled - we just need to find which columns
-        print("\n📅 Scanning template for existing date columns...")
+        # ===== CRITICAL: SCAN TEMPLATE TO FIND STRUCTURE =====
+        print("\n🔍 Scanning template structure...")
         
-        from datetime import date
-        days_in_month = monthrange(year, month)[1]
-        day_columns = {}  # {day_number: column_index}
+        # Search for date row and day row
+        date_row = None
+        day_row = None
+        name_column = None
+        boys_start_row = None
+        girls_start_row = None
+        first_day_column = None
         
-        # Scan columns D onwards to find where dates are
-        for col_idx in range(first_day_column, first_day_column + 100):  # Scan up to 100 columns
-            try:
-                cell_value = ws.cell(row=date_row, column=col_idx).value
-                
-                # Check if this cell contains a date number
-                if cell_value and isinstance(cell_value, (int, float)):
-                    day_num = int(cell_value)
+        # Scan rows 1-20 to find headers
+        for row in range(1, 21):
+            for col in range(1, 10):
+                cell_value = ws.cell(row=row, column=col).value
+                if cell_value:
+                    str_value = str(cell_value).strip().upper()
                     
-                    # Validate it's a valid day for this month
-                    if 1 <= day_num <= days_in_month:
-                        # Verify this is a weekday by checking the date
-                        current_date = date(year, month, day_num)
-                        day_of_week = current_date.weekday()  # 0=Monday, 6=Sunday
+                    # Look for "LEARNER'S NAME" or "NAME" header
+                    if 'LEARNER' in str_value or (str_value == 'NAME' and name_column is None):
+                        name_column = col
+                        # Boys section typically starts 2 rows after header
+                        if boys_start_row is None:
+                            boys_start_row = row + 2
+                        print(f"  ✓ Found name column: Column {col} at row {row}")
+                    
+                    # Look for "MALE" or "BOYS" section header
+                    if 'MALE' in str_value or 'BOYS' in str_value:
+                        if boys_start_row is None or row > boys_start_row - 2:
+                            boys_start_row = row + 1
+                        print(f"  ✓ Found boys section marker at row {row}")
+                    
+                    # Look for "FEMALE" or "GIRLS" section header
+                    if 'FEMALE' in str_value or 'GIRLS' in str_value:
+                        if girls_start_row is None or row > girls_start_row - 2:
+                            girls_start_row = row + 1
+                        print(f"  ✓ Found girls section marker at row {row}")
+        
+        # Default values if not found
+        if name_column is None:
+            name_column = 2  # Column B
+            print("  ⚠️ Name column not found, using default: Column B")
+        
+        if boys_start_row is None:
+            boys_start_row = 14
+            print("  ⚠️ Boys section not found, using default: Row 14")
+        
+        if girls_start_row is None:
+            girls_start_row = 36
+            print("  ⚠️ Girls section not found, using default: Row 36")
+        
+        # ===== ROBUST DATE COLUMN DETECTION =====
+        print("\n📅 Scanning for date columns...")
+        
+        from datetime import date as date_obj
+        days_in_month = monthrange(year, month)[1]
+        day_columns = {}
+        
+        # Search rows 10-13 for date numbers and corresponding columns
+        for search_row in range(10, 14):
+            print(f"  Scanning row {search_row}...")
+            
+            # Scan columns D onwards (column 4+)
+            for col_idx in range(4, 100):  # Scan up to column CV
+                try:
+                    cell = ws.cell(row=search_row, column=col_idx)
+                    cell_value = cell.value
+                    
+                    # Skip empty cells
+                    if cell_value is None:
+                        continue
+                    
+                    # Check for integer day numbers (1-31)
+                    day_num = None
+                    
+                    if isinstance(cell_value, (int, float)):
+                        day_num = int(cell_value)
+                    elif isinstance(cell_value, str):
+                        # Try to extract number from string
+                        import re
+                        match = re.search(r'\b(\d{1,2})\b', cell_value)
+                        if match:
+                            day_num = int(match.group(1))
+                    
+                    # Validate day number
+                    if day_num and 1 <= day_num <= days_in_month:
+                        # Check if this day is a weekday
+                        current_date = date_obj(year, month, day_num)
+                        day_of_week = current_date.weekday()
                         
-                        if day_of_week < 5:  # Weekday only
-                            day_columns[day_num] = col_idx
-                            day_name = current_date.strftime('%a')
-                            print(f"  Found Day {day_num:2d} ({day_name}) at column {col_idx}")
-            except:
-                # Stop scanning when we hit empty/invalid cells
+                        if day_of_week < 5:  # Monday-Friday only
+                            # Avoid duplicates
+                            if day_num not in day_columns:
+                                day_columns[day_num] = col_idx
+                                day_name = current_date.strftime('%a')
+                                print(f"    ✓ Day {day_num:2d} ({day_name}) → Column {col_idx}")
+                
+                except Exception as e:
+                    continue
+            
+            # If we found dates in this row, stop searching other rows
+            if len(day_columns) > 0:
+                date_row = search_row
+                print(f"  ✓ Using row {search_row} for dates")
                 break
         
-        print(f"✓ Found {len(day_columns)} weekday columns in template")
+        print(f"\n✓ Found {len(day_columns)} weekday columns")
         
         if len(day_columns) == 0:
-            return Response(
-                {"error": "Could not find date columns in template. Check template structure."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # ===== Helper function to safely write to cells =====
-        def safe_write_cell(ws, row, col, value, alignment=None, fill=None, font=None):
-            """Safely write to a cell, handling merged cells"""
+            # FALLBACK: Generate columns manually based on month
+            print("⚠️ No date columns found in template, generating manually...")
+            
+            first_day_column = 4  # Start at column D
+            current_col = first_day_column
+            
+            for day in range(1, days_in_month + 1):
+                current_date = date_obj(year, month, day)
+                if current_date.weekday() < 5:  # Weekday
+                    day_columns[day] = current_col
+                    current_col += 1
+            
+            print(f"  ✓ Generated {len(day_columns)} weekday columns")
+        
+        # ===== HELPER FUNCTION TO WRITE CELLS SAFELY =====
+        def safe_write_cell(ws, row, col, value=None, alignment=None, fill=None, font=None):
+            """Safely write to a cell"""
             from openpyxl.cell.cell import MergedCell
             
             try:
                 cell = ws.cell(row=row, column=col)
                 
-                # Skip if it's a merged cell (don't unmerge - respect template structure)
+                # Skip merged cells
                 if isinstance(cell, MergedCell):
-                    print(f"    ⚠️ Skipping merged cell at row {row}, col {col}")
                     return False
                 
                 # Write value
-                cell.value = value
+                if value is not None:
+                    cell.value = value
                 
                 # Apply formatting
                 if alignment:
@@ -734,92 +796,75 @@ def generate_sf2_excel(request):
                 return True
                 
             except Exception as e:
-                print(f"    ❌ Error writing to row {row}, col {col}: {e}")
+                print(f"    ❌ Error at row {row}, col {col}: {e}")
                 return False
 
-        # ===== Fill student attendance =====
+        # ===== FILL STUDENT ATTENDANCE =====
         def fill_student_attendance(students_list, start_row):
-            """Fill attendance for a list of students starting at start_row"""
+            """Fill attendance for students"""
             filled_count = 0
             
             for idx, name in enumerate(students_list):
                 row_num = start_row + idx
-                print(f"  Row {row_num}: {name}")
-
-                # Write student name to Column B
+                
+                # Write student name
                 if safe_write_cell(ws, row_num, name_column, name, left_alignment):
-                    print(f"    ✓ Name written to B{row_num}")
+                    print(f"  Row {row_num}: {name}")
 
-                # Fill attendance for each weekday
+                # Fill attendance
                 for day, col_idx in day_columns.items():
                     # Skip future dates
                     if year == current_year and month == current_month and day > current_day:
                         continue
 
-                    # Get attendance status
                     has_am = attendance_data[name]['days'][day]['am']
                     has_pm = attendance_data[name]['days'][day]['pm']
 
-                    # Determine what to fill
                     value = None
                     fill = None
                     font = None
                     alignment = center_alignment
 
                     if not has_am and not has_pm:
-                        # ABSENT - Red fill
                         fill = red_fill
                         filled_count += 1
-                        
                     elif has_am and has_pm:
-                        # FULL DAY - Green fill
                         fill = green_fill
                         filled_count += 1
-                        
                     elif has_am and not has_pm:
-                        # AM ONLY - Green triangle ◤
                         value = "◤"
                         font = triangle_font
                         alignment = am_triangle_alignment
                         filled_count += 1
-                        
                     elif has_pm and not has_am:
-                        # PM ONLY - Green triangle ◢
                         value = "◢"
                         font = triangle_font
                         alignment = pm_triangle_alignment
                         filled_count += 1
 
-                    # Write to cell
                     if value or fill:
-                        if safe_write_cell(ws, row_num, col_idx, value, alignment, fill, font):
-                            pass  # Successfully written
+                        safe_write_cell(ws, row_num, col_idx, value, alignment, fill, font)
 
             return filled_count
 
-        # Fill BOYS section
+        # Fill boys and girls sections
         print(f"\n👦 Filling boys section starting at row {boys_start_row}")
         boys_filled = fill_student_attendance(boys, boys_start_row)
-        print(f"✓ Filled {boys_filled} attendance cells for boys")
-
-        # Fill GIRLS section
+        
         print(f"\n👧 Filling girls section starting at row {girls_start_row}")
         girls_filled = fill_student_attendance(girls, girls_start_row)
-        print(f"✓ Filled {girls_filled} attendance cells for girls")
 
-        # Save workbook to buffer
+        # Save workbook
         buffer = io.BytesIO()
         wb.save(buffer)
         buffer.seek(0)
 
-        # Generate filename
         month_name = month_names[month - 1]
         filename = f"SF2_{month_name}_{year}_{teacher_profile.section.replace(' ', '_')}.xlsx"
         
-        print(f"\n✅ SF2 generated successfully: {filename}")
-        print(f"📊 Total attendance cells filled: {boys_filled + girls_filled}")
+        print(f"\n✅ SF2 generated: {filename}")
+        print(f"📊 Total cells filled: {boys_filled + girls_filled}")
 
-        # Return file response
         return FileResponse(
             buffer,
             as_attachment=True,
@@ -840,9 +885,9 @@ def generate_sf2_excel(request):
         print(error_trace)
         print("=" * 80)
         return Response(
-            {"error": f"Failed to generate SF2 Excel: {str(e)}"},
+            {"error": f"Failed to generate SF2: {str(e)}"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+    )
 
 # Add these corrected view classes at the end of your views.py file
 # Replace the existing MarkUnscannedAbsentView, BulkMarkAbsentView, and AbsenceStatsView
