@@ -932,9 +932,8 @@ import logging
 
 # Import your models
 from parents.models import Student
-from teacher.models import TeacherProfile
-from attendance.models import Attendance, Absence
-from attendance.serializers import AbsenceSerializer
+from teacher.models import TeacherProfile, Attendance, Absence
+from teacher.serializers import AbsenceSerializer
 
 logger = logging.getLogger(__name__)
 
