@@ -21,7 +21,9 @@ try:
 except ImportError:
     MergedCell = type(None)  # fallback so isinstance won't fail
 from openpyxl import load_workbook
-from openpyxl.styles import PatternFill, Alignment, Font
+from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+from openpyxl.cell.cell import MergedCell
+from openpyxl.utils import get_column_letter
 from openpyxl.drawing.fill import GradientFillProperties, GradientStop
 from datetime import datetime
 from collections import defaultdict
