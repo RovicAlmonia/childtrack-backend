@@ -524,6 +524,9 @@ def unauthorized_person_detail(request, pk):
             status=status.HTTP_404_NOT_FOUND
         )
 
+# ========================================
+# SF2 EXCEL REPORT GENERATION
+# ========================================
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def generate_sf2_excel(request):
@@ -536,8 +539,8 @@ def generate_sf2_excel(request):
     - Column B (Row 14+): FULL NAME (Last Name, First Name Middle Name)
     
     Visual Legend:
-    - AM Present (Morning): Green triangle ◤ - Fills upper half of cell
-    - PM Present (Afternoon): Green triangle ◢ - Fills lower half of cell
+    - AM Present (Morning): Green triangle ◤ - Top-left inside cell
+    - PM Present (Afternoon): Green triangle ◢ - Bottom-right inside cell
     - Full Day Present (AM + PM): Solid green fill
     - Absent: Solid red fill
     
@@ -622,16 +625,15 @@ def generate_sf2_excel(request):
         current_day, current_month, current_year = now.day, now.month, now.year
         
         red_fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
-        green_fill = PatternFill(start_color='00B050', end_color='FF0000', fill_type='solid')
+        green_fill = PatternFill(start_color='00B050', end_color='00B050', fill_type='solid')
         
-        # MUCH LARGER font to fill the diagonal space - increased to 60
-        triangle_font = Font(color="00B050", size=60, bold=True, name='Arial')
+        # Slightly bigger font for better visibility
+        triangle_font = Font(color="00B050", size=24, bold=True)
         
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
         
-        # Position triangles to completely fill their halves of the cell
-        # AM triangle: Fill top-left half above diagonal
+        # Position triangles flush against cell borders
         am_triangle_alignment = Alignment(
             horizontal='left', 
             vertical='top',
@@ -639,8 +641,6 @@ def generate_sf2_excel(request):
             wrap_text=False,
             shrink_to_fit=False
         )
-        
-        # PM triangle: Fill bottom-right half below diagonal
         pm_triangle_alignment = Alignment(
             horizontal='right', 
             vertical='bottom',
@@ -698,12 +698,6 @@ def generate_sf2_excel(request):
         
         print(f"✓ Filled {len(day_columns)} weekday columns")
         
-        # Set appropriate row height for all student rows to accommodate large triangles
-        for row_idx in range(boys_start_row, boys_start_row + 22):  # 22 rows for boys
-            ws.row_dimensions[row_idx].height = 40
-        for row_idx in range(girls_start_row, girls_start_row + 22):  # 22 rows for girls
-            ws.row_dimensions[row_idx].height = 40
-        
         def is_merged_cell(ws, row, col):
             return isinstance(ws.cell(row=row, column=col), MergedCell)
         
@@ -727,30 +721,22 @@ def generate_sf2_excel(request):
                     has_am = attendance_data[name]['days'][day]['am']
                     has_pm = attendance_data[name]['days'][day]['pm']
                     
-                    # Clear cell first
                     cell.value = None
                     cell.fill = PatternFill(fill_type=None)
                     cell.font = Font()
                     cell.alignment = center_alignment
                     
                     if not has_am and not has_pm:
-                        # Absent - solid red
                         cell.fill = red_fill
-                        
                     elif has_am and has_pm:
-                        # Full day present - solid green
                         cell.fill = green_fill
-                        
                     elif has_am and not has_pm:
-                        # AM only - Large triangle filling upper half
                         cell.value = "◤"
                         cell.font = triangle_font
                         cell.alignment = am_triangle_alignment
                         cell.number_format = '@'
                         print(f"    ✓ AM triangle (◤) for day {day}")
-                        
                     elif has_pm and not has_am:
-                        # PM only - Large triangle filling lower half
                         cell.value = "◢"
                         cell.font = triangle_font
                         cell.alignment = pm_triangle_alignment
@@ -782,7 +768,7 @@ def generate_sf2_excel(request):
             buffer,
             as_attachment=True,
             filename=filename,
-            content_type='application/vnd.openxmlformats-officedocument.spreadsheeml.sheet'
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
         
     except TeacherProfile.DoesNotExist:
@@ -796,6 +782,7 @@ def generate_sf2_excel(request):
         print("="*80)
         return Response({"error": f"Failed to generate SF2 Excel: {str(e)}"}, 
                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 # Add these corrected view classes at the end of your views.py file
 # Replace the existing MarkUnscannedAbsentView, BulkMarkAbsentView, and AbsenceStatsView
