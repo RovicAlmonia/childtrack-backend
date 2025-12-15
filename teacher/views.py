@@ -541,8 +541,8 @@ def generate_sf2_excel(request):
     - Column B (Row 14+): FULL NAME (Last Name, First Name Middle Name)
     
     Visual Legend:
-    - AM Present (Morning): Green triangle ◣ (top-left diagonal fill)
-    - PM Present (Afternoon): Green triangle ◥ (bottom-right diagonal fill)
+    - AM Present (Morning): Green fill in TOP triangle (above diagonal)
+    - PM Present (Afternoon): Green fill in BOTTOM triangle (below diagonal)
     - Full Day Present (AM + PM): Solid green fill
     - Absent: Solid red fill
     
@@ -626,33 +626,15 @@ def generate_sf2_excel(request):
         now = datetime.now()
         current_day, current_month, current_year = now.day, now.month, now.year
         
+        # Solid fills
         red_fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
         green_fill = PatternFill(start_color='00B050', end_color='00B050', fill_type='solid')
+        white_fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
         
-        # Diagonal border styles for perfect triangles
-        # AM triangle: diagonal from top-left, green fill on top half
-        am_border = Border(
-            left=Side(style='thin', color='000000'),
-            right=Side(style='thin', color='000000'),
-            top=Side(style='thin', color='000000'),
-            bottom=Side(style='thin', color='000000'),
-            diagonal=Side(style='medium', color='00B050'),
-            diagonalUp=False,
-            diagonalDown=True
-        )
+        # Green font for the diagonal line character - MUCH LARGER
+        green_font_large = Font(color="00B050", size=48, bold=True)
         
-        # PM triangle: diagonal from bottom-left, green fill on bottom half
-        pm_border = Border(
-            left=Side(style='thin', color='000000'),
-            right=Side(style='thin', color='000000'),
-            top=Side(style='thin', color='000000'),
-            bottom=Side(style='thin', color='000000'),
-            diagonal=Side(style='medium', color='00B050'),
-            diagonalUp=True,
-            diagonalDown=False
-        )
-        
-        # Regular thin border for other cells
+        # Border styles
         thin_border = Border(
             left=Side(style='thin', color='000000'),
             right=Side(style='thin', color='000000'),
@@ -660,11 +642,12 @@ def generate_sf2_excel(request):
             bottom=Side(style='thin', color='000000')
         )
         
-        # Light green fill for triangle cells
-        light_green_fill = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid')
-        
-        center_alignment = Alignment(horizontal='center', vertical='center')
+        center_alignment = Alignment(horizontal='center', vertical='center', wrap_text=False)
         left_alignment = Alignment(horizontal='left', vertical='center')
+        
+        # Special alignments to position large triangles to fill cells
+        fill_top_alignment = Alignment(horizontal='center', vertical='top', wrap_text=False, shrink_to_fit=False)
+        fill_bottom_alignment = Alignment(horizontal='center', vertical='bottom', wrap_text=False, shrink_to_fit=False)
         
         if wb.sheetnames:
             ws = wb[wb.sheetnames[0]]
@@ -740,29 +723,35 @@ def generate_sf2_excel(request):
                     
                     # Clear cell first
                     cell.value = None
-                    cell.fill = PatternFill(fill_type=None)
+                    cell.fill = white_fill
                     cell.font = Font()
-                    cell.alignment = center_alignment
                     cell.border = thin_border
                     
                     if not has_am and not has_pm:
                         # Absent - solid red
                         cell.fill = red_fill
-                        cell.border = thin_border
+                        cell.alignment = center_alignment
+                        
                     elif has_am and has_pm:
                         # Full day present - solid green
                         cell.fill = green_fill
-                        cell.border = thin_border
+                        cell.alignment = center_alignment
+                        
                     elif has_am and not has_pm:
-                        # AM only - diagonal line creates top-left triangle
-                        cell.fill = light_green_fill
-                        cell.border = am_border
-                        print(f"  ✓ AM triangle (diagonal border) for day {day}")
+                        # AM only - Use ◤ (upper-left triangle pointing right)
+                        cell.value = "◤"
+                        cell.font = green_font_large
+                        cell.alignment = fill_top_alignment
+                        cell.fill = white_fill
+                        print(f"  ✓ AM triangle (◤) for day {day}")
+                        
                     elif has_pm and not has_am:
-                        # PM only - diagonal line creates bottom-right triangle
-                        cell.fill = light_green_fill
-                        cell.border = pm_border
-                        print(f"  ✓ PM triangle (diagonal border) for day {day}")
+                        # PM only - Use ◢ (lower-right triangle pointing left)
+                        cell.value = "◢"
+                        cell.font = green_font_large
+                        cell.alignment = fill_bottom_alignment
+                        cell.fill = white_fill
+                        print(f"  ✓ PM triangle (◢) for day {day}")
                     
                     filled_count += 1
             
@@ -803,7 +792,8 @@ def generate_sf2_excel(request):
         print("="*80)
         return Response({"error": f"Failed to generate SF2 Excel: {str(e)}"}, 
                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
+
+
 # Add these corrected view classes at the end of your views.py file
 # Replace the existing MarkUnscannedAbsentView, BulkMarkAbsentView, and AbsenceStatsView
 from rest_framework.views import APIView
