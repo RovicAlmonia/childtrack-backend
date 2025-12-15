@@ -697,77 +697,38 @@ def generate_sf2_excel(request):
             girls_start_row = 36
             print("  ⚠️ Girls section not found, using default: Row 36")
         
-        # ===== ROBUST DATE COLUMN DETECTION =====
-        print("\n📅 Scanning for date columns...")
+        # ===== SPECIAL HANDLING FOR YOUR TEMPLATE =====
+        print("\n📅 Detecting date columns from your SF2 template...")
         
         from datetime import date as date_obj
         days_in_month = monthrange(year, month)[1]
         day_columns = {}
         
-        # Search rows 10-13 for date numbers and corresponding columns
-        for search_row in range(10, 14):
-            print(f"  Scanning row {search_row}...")
-            
-            # Scan columns D onwards (column 4+)
-            for col_idx in range(4, 100):  # Scan up to column CV
-                try:
-                    cell = ws.cell(row=search_row, column=col_idx)
-                    cell_value = cell.value
-                    
-                    # Skip empty cells
-                    if cell_value is None:
-                        continue
-                    
-                    # Check for integer day numbers (1-31)
-                    day_num = None
-                    
-                    if isinstance(cell_value, (int, float)):
-                        day_num = int(cell_value)
-                    elif isinstance(cell_value, str):
-                        # Try to extract number from string
-                        import re
-                        match = re.search(r'\b(\d{1,2})\b', cell_value)
-                        if match:
-                            day_num = int(match.group(1))
-                    
-                    # Validate day number
-                    if day_num and 1 <= day_num <= days_in_month:
-                        # Check if this day is a weekday
-                        current_date = date_obj(year, month, day_num)
-                        day_of_week = current_date.weekday()
-                        
-                        if day_of_week < 5:  # Monday-Friday only
-                            # Avoid duplicates
-                            if day_num not in day_columns:
-                                day_columns[day_num] = col_idx
-                                day_name = current_date.strftime('%a')
-                                print(f"    ✓ Day {day_num:2d} ({day_name}) → Column {col_idx}")
-                
-                except Exception as e:
-                    continue
-            
-            # If we found dates in this row, stop searching other rows
-            if len(day_columns) > 0:
-                date_row = search_row
-                print(f"  ✓ Using row {search_row} for dates")
-                break
+        # Your template shows dates in ROW 11 starting at COLUMN D (index 4)
+        # The header row shows: 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 15, 16, 17, 18, 19, 22, 23, 24, 25, 26, 29, 30, 31
+        # This pattern represents WEEKDAYS ONLY in December 2025
         
-        print(f"\n✓ Found {len(day_columns)} weekday columns")
+        # Strategy: Generate the weekday columns for the target month
+        print(f"  Generating weekday columns for {month_names[month-1]} {year}...")
         
-        if len(day_columns) == 0:
-            # FALLBACK: Generate columns manually based on month
-            print("⚠️ No date columns found in template, generating manually...")
+        first_day_column = 4  # Column D (index 4)
+        current_col = first_day_column
+        
+        for day in range(1, days_in_month + 1):
+            current_date = date_obj(year, month, day)
+            day_of_week = current_date.weekday()  # 0=Monday, 6=Sunday
             
-            first_day_column = 4  # Start at column D
-            current_col = first_day_column
-            
-            for day in range(1, days_in_month + 1):
-                current_date = date_obj(year, month, day)
-                if current_date.weekday() < 5:  # Weekday
-                    day_columns[day] = current_col
-                    current_col += 1
-            
-            print(f"  ✓ Generated {len(day_columns)} weekday columns")
+            # Only include weekdays (Monday-Friday)
+            if day_of_week < 5:
+                day_columns[day] = current_col
+                day_name = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'][day_of_week]
+                print(f"    Day {day:2d} ({day_name}, {current_date.strftime('%Y-%m-%d')}) → Column {current_col}")
+                current_col += 1
+            else:
+                day_name = ['Sat', 'Sun'][day_of_week - 5]
+                print(f"    Day {day:2d} ({day_name}, {current_date.strftime('%Y-%m-%d')}) → WEEKEND, SKIPPED")
+        
+        print(f"\n✓ Generated {len(day_columns)} weekday columns for attendance tracking")
         
         # ===== HELPER FUNCTION TO WRITE CELLS SAFELY =====
         def safe_write_cell(ws, row, col, value=None, alignment=None, fill=None, font=None):
@@ -887,7 +848,7 @@ def generate_sf2_excel(request):
         return Response(
             {"error": f"Failed to generate SF2: {str(e)}"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
-    )
+                )
 
 # Add these corrected view classes at the end of your views.py file
 # Replace the existing MarkUnscannedAbsentView, BulkMarkAbsentView, and AbsenceStatsView
