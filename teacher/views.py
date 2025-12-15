@@ -633,16 +633,16 @@ def generate_sf2_excel(request):
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
         
-        # Position triangles with middle vertical alignment and left/right horizontal alignment
+        # Position triangles with middle vertical alignment and slightly inset horizontal alignment
         am_triangle_alignment = Alignment(
             horizontal='left', 
             vertical='center',
-            indent=0,
+            indent=1,
             wrap_text=False,
             shrink_to_fit=False
         )
         pm_triangle_alignment = Alignment(
-            horizontal='right', 
+            horizontal='center', 
             vertical='center',
             indent=0,
             wrap_text=False,
