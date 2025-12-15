@@ -528,7 +528,6 @@ def unauthorized_person_detail(request, pk):
 # SF2 EXCEL REPORT GENERATION
 # ========================================
 # Replace the generate_sf2_excel function in your views.py with this corrected version
-
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def generate_sf2_excel(request):
@@ -541,8 +540,8 @@ def generate_sf2_excel(request):
     - Column B (Row 14+): FULL NAME (Last Name, First Name Middle Name)
     
     Visual Legend:
-    - AM Present (Morning): Green fill in TOP triangle (above diagonal)
-    - PM Present (Afternoon): Green fill in BOTTOM triangle (below diagonal)
+    - AM Present (Morning): Green triangle ◤ - Top-left inside cell
+    - PM Present (Afternoon): Green triangle ◢ - Bottom-right inside cell
     - Full Day Present (AM + PM): Solid green fill
     - Absent: Solid red fill
     
@@ -626,43 +625,18 @@ def generate_sf2_excel(request):
         now = datetime.now()
         current_day, current_month, current_year = now.day, now.month, now.year
         
-        # Solid fills
         red_fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
         green_fill = PatternFill(start_color='00B050', end_color='00B050', fill_type='solid')
-        white_fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
         
-        # Keep original triangle font size
-        green_font_triangle = Font(color="00B050", size=48, bold=True, name='Arial')
+        # Slightly bigger font for better visibility (increased from 16 to 24)
+        triangle_font = Font(color="00B050", size=24, bold=True)
         
-        # Border styles
-        thin_border = Border(
-            left=Side(style='thin', color='000000'),
-            right=Side(style='thin', color='000000'),
-            top=Side(style='thin', color='000000'),
-            bottom=Side(style='thin', color='000000')
-        )
-        
-        center_alignment = Alignment(horizontal='center', vertical='center', wrap_text=False)
+        center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
         
-        # IMPROVED: Precise alignments for perfect triangle positioning
-        # For upper triangle (AM - ◤): position in top-left corner
-        am_triangle_alignment = Alignment(
-            horizontal='left', 
-            vertical='top', 
-            wrap_text=False, 
-            shrink_to_fit=False,
-            indent=0
-        )
-        
-        # For lower triangle (PM - ◢): position in bottom-right corner
-        pm_triangle_alignment = Alignment(
-            horizontal='right', 
-            vertical='bottom', 
-            wrap_text=False, 
-            shrink_to_fit=False,
-            indent=0
-        )
+        # Proper triangle alignment
+        am_triangle_alignment = Alignment(horizontal='left', vertical='top')
+        pm_triangle_alignment = Alignment(horizontal='right', vertical='bottom')
         
         if wb.sheetnames:
             ws = wb[wb.sheetnames[0]]
@@ -713,12 +687,6 @@ def generate_sf2_excel(request):
         
         print(f"✓ Filled {len(day_columns)} weekday columns")
         
-        # Set optimal row height for all student rows
-        for row_idx in range(boys_start_row, boys_start_row + len(boys)):
-            ws.row_dimensions[row_idx].height = 30
-        for row_idx in range(girls_start_row, girls_start_row + len(girls)):
-            ws.row_dimensions[row_idx].height = 30
-        
         def is_merged_cell(ws, row, col):
             return isinstance(ws.cell(row=row, column=col), MergedCell)
         
@@ -742,36 +710,24 @@ def generate_sf2_excel(request):
                     has_am = attendance_data[name]['days'][day]['am']
                     has_pm = attendance_data[name]['days'][day]['pm']
                     
-                    # Clear cell first
                     cell.value = None
-                    cell.fill = white_fill
+                    cell.fill = PatternFill(fill_type=None)
                     cell.font = Font()
-                    cell.border = thin_border
+                    cell.alignment = center_alignment
                     
                     if not has_am and not has_pm:
-                        # Absent - solid red
                         cell.fill = red_fill
-                        cell.alignment = center_alignment
-                        
                     elif has_am and has_pm:
-                        # Full day present - solid green
                         cell.fill = green_fill
-                        cell.alignment = center_alignment
-                        
                     elif has_am and not has_pm:
-                        # AM only - Use ◤ (upper-left triangle) positioned at top-left
                         cell.value = "◤"
-                        cell.font = green_font_triangle
+                        cell.font = triangle_font
                         cell.alignment = am_triangle_alignment
-                        cell.fill = white_fill
                         print(f"    ✓ AM triangle (◤) for day {day}")
-                        
                     elif has_pm and not has_am:
-                        # PM only - Use ◢ (lower-right triangle) positioned at bottom-right
                         cell.value = "◢"
-                        cell.font = green_font_triangle
+                        cell.font = triangle_font
                         cell.alignment = pm_triangle_alignment
-                        cell.fill = white_fill
                         print(f"    ✓ PM triangle (◢) for day {day}")
                     
                     filled_count += 1
