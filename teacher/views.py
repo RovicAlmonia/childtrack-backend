@@ -628,8 +628,8 @@ def generate_sf2_excel(request):
         red_fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
         green_fill = PatternFill(start_color='00B050', end_color='00B050', fill_type='solid')
         
-        # Optimized font size - 28pt that will scale to fit cell perfectly
-        triangle_font = Font(color="00B050", size=28, bold=True)
+        # Optimized font size - 32pt with minimal shrinking needed
+        triangle_font = Font(color="00B050", size=32, bold=True)
         
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
