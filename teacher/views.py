@@ -643,7 +643,7 @@ def generate_sf2_excel(request):
             text_rotation=0
         )
         pm_triangle_alignment = Alignment(
-            horizontal='right', 
+            horizontal='center', 
             vertical='bottom',
             indent=0,
             wrap_text=False,
@@ -806,6 +806,7 @@ def generate_sf2_excel(request):
         print("="*80)
         return Response({"error": f"Failed to generate SF2 Excel: {str(e)}"}, 
                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 # Add these corrected view classes at the end of your views.py file
 # Replace the existing MarkUnscannedAbsentView, BulkMarkAbsentView, and AbsenceStatsView
