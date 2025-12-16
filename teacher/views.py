@@ -628,8 +628,8 @@ def generate_sf2_excel(request):
         red_fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
         green_fill = PatternFill(start_color='00B050', end_color='00B050', fill_type='solid')
         
-        # Optimized font size - smaller font that will scale to fit cell
-        triangle_font = Font(color="00B050", size=34, bold=True)
+        # Optimized font size - 28pt that will scale to fit cell perfectly
+        triangle_font = Font(color="00B050", size=28, bold=True)
         
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
@@ -809,7 +809,7 @@ def generate_sf2_excel(request):
         print("="*80)
         return Response({"error": f"Failed to generate SF2 Excel: {str(e)}"}, 
                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+        
 # Add these corrected view classes at the end of your views.py file
 # Replace the existing MarkUnscannedAbsentView, BulkMarkAbsentView, and AbsenceStatsView
 from rest_framework.views import APIView
