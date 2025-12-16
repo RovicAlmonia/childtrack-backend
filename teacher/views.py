@@ -633,7 +633,8 @@ def generate_sf2_excel(request):
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
         
-        # LOCKED TRIANGLE POSITIONS - Positioned in corners
+        # LOCKED TRIANGLE POSITIONS - Corners positioned precisely
+        # AM triangle (◤) flush to top-left corner
         am_triangle_alignment = Alignment(
             horizontal='left', 
             vertical='top',
@@ -642,8 +643,9 @@ def generate_sf2_excel(request):
             shrink_to_fit=False,
             text_rotation=0
         )
+        # PM triangle (◢) flush to bottom-right corner
         pm_triangle_alignment = Alignment(
-            horizontal='center', 
+            horizontal='right', 
             vertical='bottom',
             indent=0,
             wrap_text=False,
