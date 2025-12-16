@@ -628,20 +628,20 @@ def generate_sf2_excel(request):
         red_fill = PatternFill(start_color='FF0000', end_color='FF0000', fill_type='solid')
         green_fill = PatternFill(start_color='00B050', end_color='00B050', fill_type='solid')
         
-        # Optimized font size - 32pt with minimal shrinking needed
-        triangle_font = Font(color="00B050", size=32, bold=True)
+        # Optimized font size - larger to fill cell completely
+        triangle_font = Font(color="00B050", size=20, bold=True)
         
         center_alignment = Alignment(horizontal='center', vertical='center')
         left_alignment = Alignment(horizontal='left', vertical='center')
         
-        # LOCKED TRIANGLE POSITIONS - Corners positioned precisely with shrink to fit enabled
+        # LOCKED TRIANGLE POSITIONS - Corners positioned precisely, no shrinking
         # AM triangle (◤) flush to top-left corner
         am_triangle_alignment = Alignment(
             horizontal='left', 
             vertical='top',
             indent=0,
             wrap_text=False,
-            shrink_to_fit=True,  # Enable shrink to fit for scaling
+            shrink_to_fit=False,  # Disable shrink to fit for exact sizing
             text_rotation=0
         )
         # PM triangle (◢) flush to bottom-right corner
@@ -650,7 +650,7 @@ def generate_sf2_excel(request):
             vertical='bottom',
             indent=0,
             wrap_text=False,
-            shrink_to_fit=True,  # Enable shrink to fit for scaling
+            shrink_to_fit=False,  # Disable shrink to fit for exact sizing
             text_rotation=0
         )
         
@@ -667,7 +667,7 @@ def generate_sf2_excel(request):
         
         # Lock column widths for consistent triangle rendering
         # Set a uniform width for date columns to create square cells
-        ATTENDANCE_COLUMN_WIDTH = 3.5  # Optimal width for triangle display
+        ATTENDANCE_COLUMN_WIDTH = 2.86  # Exact width for 20pt font triangles
         
         def unmerge_and_write(ws, row, col, value, alignment=None):
             cell_coord = ws.cell(row=row, column=col).coordinate
@@ -714,7 +714,7 @@ def generate_sf2_excel(request):
         
         # Lock row heights for consistent triangle display
         # Match row height to column width for square cells (perfect diagonal triangles)
-        ROW_HEIGHT = 22  # Creates square cells optimized for 28pt triangles
+        ROW_HEIGHT = 20  # Exact height for 20pt triangles - fills cell edge to edge
         
         def is_merged_cell(ws, row, col):
             return isinstance(ws.cell(row=row, column=col), MergedCell)
