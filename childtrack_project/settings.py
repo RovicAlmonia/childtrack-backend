@@ -90,11 +90,10 @@ DATABASES = {
     'default': dj_database_url.parse(
         os.getenv(
             'DATABASE_URL',
-            'postgresql://childtrack_5_user:jelQmbt20kDZLt9QTSrRvSOtiff2O46B@dpg-d4cqb1n5r7bs73aj421g-a/childtrack_5'
+            'postgresql://childtrack_6_user:Nl5GXGTRpM4hJgcoDwaCLdBKaJ6RsYMY@dpg-d51dvm8gjchc73b4lfo0-a/childtrack_6'
         )
     )
 }
-
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
