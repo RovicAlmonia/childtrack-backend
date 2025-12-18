@@ -18,6 +18,7 @@ import base64
 from django.core.files.base import ContentFile
 
 from .models import Student, ParentGuardian, ParentMobileAccount, ParentNotification, ParentEvent, ParentSchedule
+from .models import PasswordResetToken
 
 from teacher.models import TeacherProfile
 from .serializers import (
@@ -36,6 +37,10 @@ from .serializers import (
 logger = logging.getLogger(__name__)
 
 import traceback
+from django.core.mail import send_mail
+from django.utils import timezone
+from django.utils.crypto import get_random_string
+from datetime import timedelta
 
 
 class AvatarDebugView(APIView):
@@ -437,6 +442,84 @@ class ParentMobileLoginView(APIView):
             "account": ParentMobileAccountSerializer(mobile_account).data
         }
         return Response(response_data, status=status.HTTP_200_OK)
+
+
+class ParentPasswordResetRequestView(APIView):
+    """Request a password reset code to be sent to the parent's email.
+
+    Endpoint: POST /api/parents/password-reset/ with JSON { "email": "..." }
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        email = (request.data.get('email') or '').strip().lower()
+        if not email:
+            return Response({'error': 'email is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Try to find parent by email, but always return success to avoid
+        # leaking which emails are registered.
+        parent = ParentGuardian.objects.filter(email__iexact=email).first()
+
+        # Generate numeric 6-digit code
+        code = get_random_string(length=6, allowed_chars='0123456789')
+        expires = timezone.now() + timedelta(hours=1)
+
+        token = PasswordResetToken.objects.create(
+            parent=parent,
+            email=email,
+            code=code,
+            expires_at=expires,
+        )
+
+        # Send email if parent exists and email backend configured
+        subject = 'ChildTrack Password Reset Code'
+        message = f"Your password reset code is: {code}\n\nThis code expires in 1 hour. If you did not request this, please ignore."
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', None) or getattr(settings, 'EMAIL_HOST_USER', None) or 'no-reply@example.com'
+        try:
+            if parent and from_email:
+                send_mail(subject, message, from_email, [email], fail_silently=False)
+            else:
+                # attempt send anyway; if not configured it will raise and be caught
+                send_mail(subject, message, from_email, [email], fail_silently=True)
+        except Exception:
+            # don't fail the request for email delivery issues; log and continue
+            logger.exception('Failed to send password reset email to %s', email)
+
+        return Response({'detail': 'If an account with that email exists, a verification code has been sent.'})
+
+
+class ParentPasswordResetConfirmView(APIView):
+    """Confirm a password reset with code and set a new password.
+
+    Endpoint: POST /api/parents/password-reset/confirm/ with JSON { "email": "...", "code": "...", "new_password": "..." }
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        email = (request.data.get('email') or '').strip().lower()
+        code = (request.data.get('code') or '').strip()
+        new_password = request.data.get('new_password')
+
+        if not email or not code or not new_password:
+            return Response({'error': 'email, code and new_password are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        token = PasswordResetToken.objects.filter(email__iexact=email, code=code, used=False, expires_at__gt=timezone.now()).order_by('-created_at').first()
+        if not token:
+            return Response({'error': 'Invalid or expired code'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not token.parent:
+            return Response({'error': 'Account not found for this email'}, status=status.HTTP_404_NOT_FOUND)
+
+        parent = token.parent
+        try:
+            parent.password = make_password(str(new_password))
+            parent.save()
+            token.used = True
+            token.save()
+            return Response({'detail': 'Password changed successfully'})
+        except Exception as e:
+            logger.exception('Failed to reset password for %s', email)
+            return Response({'error': 'Failed to change password'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class ParentsByLRNView(APIView):

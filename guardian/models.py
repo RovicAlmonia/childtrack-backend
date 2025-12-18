@@ -25,11 +25,11 @@ class Guardian(models.Model):
 
     name = models.CharField(max_length=100)
     age = models.IntegerField()
-    address = models.TextField(blank=True)
-    relationship = models.CharField(max_length=50, blank=True)
-    contact = models.CharField(max_length=20, blank=True)
+    address = models.TextField(blank=True, null=True)
+    relationship = models.CharField(max_length=50, blank=True, null=True)
+    contact = models.CharField(max_length=20, blank=True, null=True)
     student_name = models.CharField(max_length=100)
-    photo = models.TextField(blank=True)
+    photo = models.TextField(blank=True, null=True)
     status = models.CharField(
         max_length=20,
         choices=[

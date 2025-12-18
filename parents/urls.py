@@ -15,6 +15,8 @@ from .views import (
     ParentLoginView,
     ParentDetailView,
     ParentNotificationListCreateView,
+    ParentPasswordResetRequestView,
+    ParentPasswordResetConfirmView,
     ParentEventListCreateView,
     ParentEventDetailView,
     ParentScheduleListCreateView,
@@ -47,6 +49,9 @@ urlpatterns = [
     
     # Notifications
     path('notifications/', ParentNotificationListCreateView.as_view(), name='notification-list-create'),
+    # Password reset via email code
+    path('password-reset/', ParentPasswordResetRequestView.as_view(), name='password-reset-request'),
+    path('password-reset/confirm/', ParentPasswordResetConfirmView.as_view(), name='password-reset-confirm'),
     
     # Announcements/Events
     path('events/', ParentEventListCreateView.as_view(), name='event-list-create'),

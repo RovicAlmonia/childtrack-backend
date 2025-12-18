@@ -60,7 +60,7 @@ class ParentGuardian(models.Model):
     role = models.CharField(max_length=20, choices=ROLE_CHOICES)
     contact_number = models.CharField(max_length=15, blank=True, null=True)
     email = models.EmailField(blank=True, null=True)
-    address = models.TextField(blank=True, null=True)
+    address = models.TextField(blank=True, null=True, default='')
     qr_code_data = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -211,7 +211,6 @@ class ParentNotification(models.Model):
 class ParentEvent(models.Model):
     # Allow NULL to avoid forcing a one-off default during migrations.
     # Existing database rows may have NULL values; keep the field nullable
-    # so migrations remain non-interactive and safe.
     teacher = models.ForeignKey(
         'teacher.TeacherProfile',
         on_delete=models.CASCADE,
@@ -291,3 +290,22 @@ class ParentSchedule(models.Model):
             return f"{self.subject} - {student_name}"
         except:
             return f"{self.subject}"
+
+
+class PasswordResetToken(models.Model):
+    """Simple password reset token tied to a ParentGuardian.email.
+
+    Tokens are short-lived one-time codes emailed to the parent email address.
+    """
+    parent = models.ForeignKey(ParentGuardian, on_delete=models.CASCADE, related_name='password_reset_tokens', null=True, blank=True)
+    email = models.EmailField()
+    code = models.CharField(max_length=16)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    used = models.BooleanField(default=False)
+
+    class Meta:
+        indexes = [models.Index(fields=['email', 'code'])]
+
+    def __str__(self):
+        return f"PasswordResetToken({self.email}, code={self.code}, used={self.used})"
