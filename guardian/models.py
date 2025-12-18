@@ -29,7 +29,7 @@ class Guardian(models.Model):
     relationship = models.CharField(max_length=50, blank=True, null=True)
     contact = models.CharField(max_length=20, blank=True, null=True)
     student_name = models.CharField(max_length=100)
-    photo = models.TextField(blank=True, null=True)
+    photo = models.TextField(blank=True, default='')
     status = models.CharField(
         max_length=20,
         choices=[
