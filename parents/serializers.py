@@ -70,6 +70,7 @@ class ParentGuardianSerializer(serializers.ModelSerializer):
             'password',
             'must_change_credentials',
             'avatar',
+            'photo_base64',
             'avatar_url',
             'has_mobile_account',
             'created_at',
