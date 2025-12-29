@@ -586,39 +586,44 @@ class ParentLoginView(APIView):
     authentication_classes = []
 
     def post(self, request):
-        username = request.data.get("username")
-        password = request.data.get("password")
-
-        if not username or not password:
-            return Response({"error": "Username and password are required"}, status=status.HTTP_400_BAD_REQUEST)
-
         try:
-            pg = ParentGuardian.objects.get(username=username)
-        except ParentGuardian.DoesNotExist:
-            return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
+            username = request.data.get("username")
+            password = request.data.get("password")
 
-        # Support both hashed and legacy-plaintext passwords.
-        valid = False
-        try:
-            if pg.password and check_password(password, pg.password):
-                valid = True
-            elif (pg.password or "") == password:
-                # Legacy plaintext match: upgrade to hashed password on successful login
-                pg.password = make_password(password)
-                pg.save(update_fields=['password'])
-                valid = True
-        except Exception:
-            # In case check_password/identify fails, fall back to plaintext compare
-            if (pg.password or "") == password:
-                pg.password = make_password(password)
-                pg.save(update_fields=['password'])
-                valid = True
+            if not username or not password:
+                return Response({"error": "Username and password are required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        if not valid:
-            return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                pg = ParentGuardian.objects.get(username=username)
+            except ParentGuardian.DoesNotExist:
+                return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
-        serializer = ParentGuardianSerializer(pg)
-        return Response({"parent": serializer.data}, status=status.HTTP_200_OK)
+            # Support both hashed and legacy-plaintext passwords.
+            valid = False
+            try:
+                if pg.password and check_password(password, pg.password):
+                    valid = True
+                elif (pg.password or "") == password:
+                    # Legacy plaintext match: upgrade to hashed password on successful login
+                    pg.password = make_password(password)
+                    pg.save(update_fields=['password'])
+                    valid = True
+            except Exception:
+                # In case check_password/identify fails, fall back to plaintext compare
+                if (pg.password or "") == password:
+                    pg.password = make_password(password)
+                    pg.save(update_fields=['password'])
+                    valid = True
+
+            if not valid:
+                return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
+
+            serializer = ParentGuardianSerializer(pg)
+            return Response({"parent": serializer.data}, status=status.HTTP_200_OK)
+        except Exception as e:
+            # Log full traceback and return error message to caller for debugging (remove in production)
+            logger.exception('ParentLoginView POST failed')
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class ParentDetailView(APIView):
