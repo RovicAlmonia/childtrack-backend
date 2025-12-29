@@ -75,22 +75,43 @@ class ParentGuardianAdmin(admin.ModelAdmin):
 
     def avatar_thumbnail(self, obj):
         """Display small thumbnail in list view"""
-        if getattr(obj, 'avatar', None):
-            try:
+        # Prefer file-based avatar if valid, otherwise fall back to base64 stored in avatar_base64
+        try:
+            if getattr(obj, 'avatar', None) and getattr(obj.avatar, 'url', None):
                 return format_html(
                     '<img src="{}" style="width: 40px; height: 40px; object-fit: cover; border-radius: 50%;" />',
                     obj.avatar.url
                 )
-            except Exception:
-                return 'No photo'
+        except Exception:
+            # ignore and try base64 fallback
+            pass
+
+        # Fallback to base64 field (matches guardian behavior)
+        try:
+            data = getattr(obj, 'avatar_base64', None)
+            if data:
+                # If stored has data URI prefix, ensure not duplicate
+                if 'base64,' in data:
+                    b64 = data.split('base64,')[1]
+                else:
+                    b64 = data
+                return format_html(
+                    '<img src="data:image/jpeg;base64,{}" style="width: 40px; height: 40px; object-fit: cover; border-radius: 50%;" />',
+                    b64
+                )
+        except Exception:
+            pass
+
         return format_html('<span style="color: #999;">No photo</span>')
     avatar_thumbnail.short_description = 'Avatar'
 
     def avatar_preview(self, obj):
         """Display larger preview in detail view with live preview for new uploads"""
-        # Reuse the same robust preview HTML used in guardian admin
-        if getattr(obj, 'avatar', None):
-            try:
+        # Try to show file-based avatar first. If it's missing or inaccessible,
+        # fall back to the stored base64 string (avatar_base64) similar to Guardian admin.
+        existing_avatar = ''
+        try:
+            if getattr(obj, 'avatar', None) and getattr(obj.avatar, 'url', None):
                 existing_avatar = format_html(
                     '''<div style="margin-bottom: 15px;">
                             <p style="color: #666; font-weight: bold; margin-bottom: 10px;">✅ Current avatar:</p>
@@ -103,14 +124,31 @@ class ParentGuardianAdmin(admin.ModelAdmin):
                                 Avatar URL: <a href="{}" target="_blank">{}</a>
                             </p>
                         </div>''',
-                        obj.avatar.url,
-                        obj.avatar.url,
-                        obj.avatar.url,
-                        obj.avatar.url
+                    obj.avatar.url,
+                    obj.avatar.url,
+                    obj.avatar.url,
+                    obj.avatar.url
                 )
-            except Exception as e:
-                existing_avatar = format_html('<p style="color: #d32f2f;">Error loading avatar: {}</p>', str(e))
-        else:
+        except Exception:
+            existing_avatar = ''
+
+        # If file-based avatar not present, try base64
+        if not existing_avatar:
+            try:
+                data = getattr(obj, 'avatar_base64', None)
+                if data:
+                    if 'base64,' in data:
+                        b64 = data.split('base64,')[1]
+                    else:
+                        b64 = data
+                    existing_avatar = format_html(
+                        '<div style="margin-bottom:15px;"><p style="color:#666;font-weight:bold;margin-bottom:10px;">📷 Parent Photo:</p><img src="data:image/jpeg;base64,{}" style="max-width:400px;max-height:400px;object-fit:contain;border:2px solid #2196F3;border-radius:8px;" /></div>',
+                        b64
+                    )
+            except Exception:
+                existing_avatar = ''
+
+        if not existing_avatar:
             existing_avatar = '<p style="color: #999; font-style: italic;">📷 No avatar uploaded yet</p>'
 
         preview_html = '''
