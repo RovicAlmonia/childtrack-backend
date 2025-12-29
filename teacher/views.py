@@ -220,7 +220,17 @@ class AttendanceView(APIView):
 
             serializer = AttendanceSerializer(data=data)
             if serializer.is_valid():
-                serializer.save(teacher=teacher_profile)
+                attendance = serializer.save(teacher=teacher_profile)
+                # send server-side push to parents if tokens available
+                try:
+                    from devices.expo import notify_parents_of_attendance
+                    try:
+                        notify_parents_of_attendance(attendance)
+                    except Exception:
+                        # avoid breaking the API response if push fails
+                        pass
+                except Exception:
+                    pass
                 return Response(serializer.data, status=status.HTTP_201_CREATED)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 

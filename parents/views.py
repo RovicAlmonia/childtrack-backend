@@ -966,6 +966,15 @@ class ParentEventListCreateView(APIView):
                 logger.exception('Failed to create section notifications')
 
             output = ParentEventSerializer(event).data
+            # Send server-side pushes to affected parents (best-effort)
+            try:
+                from devices.expo import notify_parents_of_event
+                try:
+                    notify_parents_of_event(event)
+                except Exception:
+                    pass
+            except Exception:
+                pass
             return Response(output, status=status.HTTP_201_CREATED)
         
         logger.warning(f"Announcement creation failed with errors: {serializer.errors}")

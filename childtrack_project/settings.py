@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     'teacher',
     'guardian',
     'parents',
+    'devices',
 
     'cloudinary_storage',
     'cloudinary',

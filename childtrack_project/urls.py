@@ -3,12 +3,14 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from parents.views import ParentNotificationListCreateView, ParentEventListCreateView, ParentScheduleListCreateView
+from django.urls import re_path
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('teacher.urls')),
     path('api/guardian/', include('guardian.urls')),
     path('api/parents/', include('parents.urls')),  # ✅ ADD THIS
+    path('api/devices/', include('devices.urls')),
     
     path('api/notifications/', ParentNotificationListCreateView.as_view(), name='notifications'),
     path('api/events/', ParentEventListCreateView.as_view(), name='events'),

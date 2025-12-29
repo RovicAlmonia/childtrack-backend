@@ -168,6 +168,15 @@ class GuardianView(APIView):
             serializer = GuardianSerializer(data=data, context={'request': request})
             if serializer.is_valid():
                 guardian = serializer.save()
+                # best-effort: notify parents via server push
+                try:
+                    from devices.expo import notify_parents_of_guardian
+                    try:
+                        notify_parents_of_guardian(guardian)
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
                 return Response({
                     "message": "Guardian registered successfully",
                     "data": serializer.data
