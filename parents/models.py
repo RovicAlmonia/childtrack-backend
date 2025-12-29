@@ -57,6 +57,10 @@ class ParentGuardian(models.Model):
     password = models.CharField(max_length=100, blank=True, null=True)
     must_change_credentials = models.BooleanField(default=False)
     avatar = models.ImageField(upload_to='parent_avatars/', blank=True, null=True)
+    # Store raw base64 image as text to support clients that upload
+    # images while the server might be temporarily unavailable and
+    # later replay the payload. This mirrors Guardian.photo behavior.
+    avatar_base64 = models.TextField(blank=True, default='')
     role = models.CharField(max_length=20, choices=ROLE_CHOICES)
     contact_number = models.CharField(max_length=15, blank=True, null=True)
     email = models.EmailField(blank=True, null=True)

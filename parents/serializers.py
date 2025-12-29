@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import Student, ParentGuardian, ParentMobileAccount, ParentNotification, ParentEvent, ParentSchedule
 from teacher.models import TeacherProfile
+import base64
 
 
 class StudentSerializer(serializers.ModelSerializer):
@@ -43,6 +44,8 @@ class ParentGuardianSerializer(serializers.ModelSerializer):
     must_change_credentials = serializers.BooleanField(read_only=True)
     # Raw ImageField for uploads
     avatar = serializers.ImageField(required=False, allow_null=True)
+    # Accept base64 image uploads (write-only). Will be stored in model.avatar_base64.
+    photo_base64 = serializers.CharField(write_only=True, required=False, allow_blank=True)
     # Public URL for the avatar (absolute URL when request context provided)
     avatar_url = serializers.SerializerMethodField(read_only=True)
 
@@ -79,6 +82,16 @@ class ParentGuardianSerializer(serializers.ModelSerializer):
     def get_avatar_url(self, obj):
         """Return full absolute URL for the avatar if available."""
         if not obj.avatar:
+            # If avatar file not present but base64 stored, return a data URI
+            if getattr(obj, 'avatar_base64', None):
+                try:
+                    # Assume jpeg by default; mobile client may include data URI prefix
+                    data = obj.avatar_base64
+                    if data and 'base64,' in data:
+                        return data
+                    return f"data:image/jpeg;base64,{data}"
+                except Exception:
+                    return None
             return None
         request = self.context.get('request')
         try:
@@ -88,6 +101,53 @@ class ParentGuardianSerializer(serializers.ModelSerializer):
             return obj.avatar.url
         except Exception:
             return None
+
+    def validate_photo_base64(self, value):
+        """Validate base64 photo data for parent avatar"""
+        if not value:
+            return value
+        # Strip data URI prefix if present
+        if 'base64,' in value:
+            value = value.split('base64,')[1]
+
+        if len(value) < 100:
+            raise serializers.ValidationError("Invalid photo data - too short")
+
+        try:
+            base64.b64decode(value)
+        except Exception as e:
+            raise serializers.ValidationError(f"Invalid base64 data: {str(e)}")
+
+        return value
+
+    def create(self, validated_data):
+        photo_base64 = validated_data.pop('photo_base64', None)
+        # Create the ParentGuardian instance
+        parent = super().create(validated_data)
+        if photo_base64:
+            try:
+                if 'base64,' in photo_base64:
+                    photo_base64 = photo_base64.split('base64,')[1]
+                parent.avatar_base64 = photo_base64
+                parent.save()
+                print(f"✅ Parent avatar stored as base64: {len(photo_base64)} characters")
+            except Exception as e:
+                print(f"⚠️ Error storing parent avatar: {type(e).__name__}: {e}")
+        return parent
+
+    def update(self, instance, validated_data):
+        photo_base64 = validated_data.pop('photo_base64', None)
+        instance = super().update(instance, validated_data)
+        if photo_base64:
+            try:
+                if 'base64,' in photo_base64:
+                    photo_base64 = photo_base64.split('base64,')[1]
+                instance.avatar_base64 = photo_base64
+                print(f"✅ Parent avatar updated as base64: {len(photo_base64)} characters")
+            except Exception as e:
+                print(f"⚠️ Error updating parent avatar: {type(e).__name__}: {e}")
+            instance.save()
+        return instance
 
 
 class ParentMobileAccountSerializer(serializers.ModelSerializer):
