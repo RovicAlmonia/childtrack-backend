@@ -150,6 +150,24 @@ class ParentGuardianSerializer(serializers.ModelSerializer):
             instance.save()
         return instance
 
+    def to_representation(self, instance):
+        """Return avatar_base64 as `photo_base64` in representation to match GuardianSerializer."""
+        representation = super().to_representation(instance)
+        if getattr(instance, 'avatar_base64', None):
+            data = instance.avatar_base64
+            # If stored string already has data URI prefix, return it as-is
+            if data and 'base64,' in data:
+                representation['photo_base64'] = data
+            else:
+                representation['photo_base64'] = f"data:image/jpeg;base64,{data}"
+            try:
+                print(f"📤 Sending parent photo_base64: {len(data)} chars for parent {instance.id}")
+            except Exception:
+                pass
+        else:
+            representation['photo_base64'] = None
+        return representation
+
 
 class ParentMobileAccountSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
