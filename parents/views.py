@@ -568,6 +568,13 @@ class ParentGuardianPublicListView(APIView):
                 last, rest = name.split(',', 1)
                 reordered = rest.strip() + ' ' + last.strip()
                 variants.update({reordered, reordered.replace(' ', ''), reordered.replace(',', ''), reordered.replace(' ', '').replace(',', '')})
+            else:
+                parts = name.split()
+                if len(parts) >= 2:
+                    last = parts[-1]
+                    rest = ' '.join(parts[:-1])
+                    comma_variant = f"{last}, {rest}"
+                    variants.update({comma_variant, comma_variant.replace(' ', ''), comma_variant.replace(',', ''), comma_variant.replace(' ', '').replace(',', '')})
             q = None
             for v in variants:
                 q = Q(student__name__iexact=v) if q is None else q | Q(student__name__iexact=v)

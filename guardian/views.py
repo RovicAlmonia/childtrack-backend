@@ -16,6 +16,7 @@ def _build_name_variants(name):
     variants.add(name.replace(' ', ''))
     variants.add(name.replace(',', ''))
     variants.add(name.replace(' ', '').replace(',', ''))
+    # If name is in 'Last, First' form, add reordered 'First Last' variants
     if ',' in name:
         last, rest = name.split(',', 1)
         reordered = rest.strip() + ' ' + last.strip()
@@ -23,6 +24,17 @@ def _build_name_variants(name):
         variants.add(reordered.replace(' ', ''))
         variants.add(reordered.replace(',', ''))
         variants.add(reordered.replace(' ', '').replace(',', ''))
+    else:
+        # Also add a 'Last, First' variant when input is 'First ... Last'
+        parts = name.split()
+        if len(parts) >= 2:
+            last = parts[-1]
+            rest = ' '.join(parts[:-1])
+            comma_variant = f"{last}, {rest}"
+            variants.add(comma_variant)
+            variants.add(comma_variant.replace(' ', ''))
+            variants.add(comma_variant.replace(',', ''))
+            variants.add(comma_variant.replace(' ', '').replace(',', ''))
     return variants
 
 class GuardianView(APIView):
