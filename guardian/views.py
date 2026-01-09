@@ -345,11 +345,15 @@ class GuardianPublicListView(APIView):
         if teacher_id:
             queryset = queryset.filter(teacher_id=teacher_id)
         if student_name:
-            # Accept student_name with or without spaces (some entries omit spaces)
+            # Accept student_name with or without spaces and handle "Last, First" formats
             no_space = student_name.replace(' ', '')
-            queryset = queryset.filter(
-                Q(student_name__iexact=student_name) | Q(student_name__iexact=no_space)
-            )
+            q = Q(student_name__iexact=student_name) | Q(student_name__iexact=no_space)
+            if ',' in student_name:
+                last, rest = student_name.split(',', 1)
+                reordered = rest.strip() + ' ' + last.strip()
+                reordered_no_space = reordered.replace(' ', '')
+                q = q | Q(student_name__iexact=reordered) | Q(student_name__iexact=reordered_no_space)
+            queryset = queryset.filter(q)
         if search:
             queryset = queryset.filter(
                 Q(name__icontains=search)
@@ -397,14 +401,16 @@ class ParentGuardianListView(APIView):
             
             # Get guardians for this parent's student
             student = parent_guardian.student
-            # Match by foreign key or by student name; accept names with or without spaces
-            student_name_no_space = student.name.replace(' ', '')
-            guardians = Guardian.objects.filter(
-                (Q(student=student)
-                 | Q(student_name__iexact=student.name)
-                 | Q(student_name__iexact=student_name_no_space)),
-                status='pending'
-            ).order_by('-timestamp')
+            # Match by foreign key or by student name; accept names with/without spaces and "Last, First"
+            student_name = student.name
+            student_name_no_space = student_name.replace(' ', '')
+            q = Q(student=student) | Q(student_name__iexact=student_name) | Q(student_name__iexact=student_name_no_space)
+            if ',' in student_name:
+                last, rest = student_name.split(',', 1)
+                reordered = rest.strip() + ' ' + last.strip()
+                reordered_no_space = reordered.replace(' ', '')
+                q = q | Q(student_name__iexact=reordered) | Q(student_name__iexact=reordered_no_space)
+            guardians = Guardian.objects.filter(q, status='pending').order_by('-timestamp')
             
             serializer = GuardianSerializer(guardians, many=True, context={'request': request})
             
@@ -453,12 +459,15 @@ class ParentGuardianListView(APIView):
                 )
             
             # Get the guardian - verify it belongs to this parent's student
-            student_name_no_space = parent_guardian.student.name.replace(' ', '')
-            guardian_qs = Guardian.objects.filter(id=pk).filter(
-                Q(student=parent_guardian.student)
-                | Q(student_name__iexact=parent_guardian.student.name)
-                | Q(student_name__iexact=student_name_no_space)
-            )
+            student_name = parent_guardian.student.name
+            student_name_no_space = student_name.replace(' ', '')
+            q = Q(student=parent_guardian.student) | Q(student_name__iexact=student_name) | Q(student_name__iexact=student_name_no_space)
+            if ',' in student_name:
+                last, rest = student_name.split(',', 1)
+                reordered = rest.strip() + ' ' + last.strip()
+                reordered_no_space = reordered.replace(' ', '')
+                q = q | Q(student_name__iexact=reordered) | Q(student_name__iexact=reordered_no_space)
+            guardian_qs = Guardian.objects.filter(id=pk).filter(q)
             guardian = guardian_qs.first()
             if not guardian:
                 return Response(
