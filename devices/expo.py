@@ -78,7 +78,17 @@ def notify_parents_of_attendance(attendance):
         if getattr(attendance, 'student_lrn', None):
             parents_qs = ParentGuardian.objects.filter(student__lrn=attendance.student_lrn)
         if not parents_qs.exists() and getattr(attendance, 'student_name', None):
-            parents_qs = ParentGuardian.objects.filter(student__name__iexact=attendance.student_name)
+            name = attendance.student_name
+            variants = {name, name.replace(' ', ''), name.replace(',', ''), name.replace(' ', '').replace(',', '')}
+            if ',' in name:
+                last, rest = name.split(',', 1)
+                reordered = rest.strip() + ' ' + last.strip()
+                variants.update({reordered, reordered.replace(' ', ''), reordered.replace(',', ''), reordered.replace(' ', '').replace(',', '')})
+            q = None
+            for v in variants:
+                q = Q(student__name__iexact=v) if q is None else q | Q(student__name__iexact=v)
+            if q is not None:
+                parents_qs = ParentGuardian.objects.filter(q)
 
         if not parents_qs.exists():
             return {'info': 'no parents found'}
@@ -130,7 +140,17 @@ def notify_parents_of_guardian(guardian):
         parents_qs = ParentGuardian.objects.filter(student__lrn=getattr(guardian, 'student__lrn', None))
         # fallback by student_name
         if not parents_qs.exists() and getattr(guardian, 'student_name', None):
-            parents_qs = ParentGuardian.objects.filter(student__name__iexact=guardian.student_name)
+            name = guardian.student_name
+            variants = {name, name.replace(' ', ''), name.replace(',', ''), name.replace(' ', '').replace(',', '')}
+            if ',' in name:
+                last, rest = name.split(',', 1)
+                reordered = rest.strip() + ' ' + last.strip()
+                variants.update({reordered, reordered.replace(' ', ''), reordered.replace(',', ''), reordered.replace(' ', '').replace(',', '')})
+            q = None
+            for v in variants:
+                q = Q(student__name__iexact=v) if q is None else q | Q(student__name__iexact=v)
+            if q is not None:
+                parents_qs = ParentGuardian.objects.filter(q)
 
         if not parents_qs.exists():
             return {'info': 'no parents found'}

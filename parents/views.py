@@ -562,7 +562,17 @@ class ParentGuardianPublicListView(APIView):
         if lrn:
             queryset = queryset.filter(student__lrn=lrn)
         if student_name:
-            queryset = queryset.filter(student__name__iexact=student_name)
+            name = student_name
+            variants = {name, name.replace(' ', ''), name.replace(',', ''), name.replace(' ', '').replace(',', '')}
+            if ',' in name:
+                last, rest = name.split(',', 1)
+                reordered = rest.strip() + ' ' + last.strip()
+                variants.update({reordered, reordered.replace(' ', ''), reordered.replace(',', ''), reordered.replace(' ', '').replace(',', '')})
+            q = None
+            for v in variants:
+                q = Q(student__name__iexact=v) if q is None else q | Q(student__name__iexact=v)
+            if q is not None:
+                queryset = queryset.filter(q)
         if role:
             queryset = queryset.filter(role__iexact=role)
         if limit:
