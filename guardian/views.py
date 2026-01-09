@@ -345,7 +345,11 @@ class GuardianPublicListView(APIView):
         if teacher_id:
             queryset = queryset.filter(teacher_id=teacher_id)
         if student_name:
-            queryset = queryset.filter(student_name__iexact=student_name)
+            # Accept student_name with or without spaces (some entries omit spaces)
+            no_space = student_name.replace(' ', '')
+            queryset = queryset.filter(
+                Q(student_name__iexact=student_name) | Q(student_name__iexact=no_space)
+            )
         if search:
             queryset = queryset.filter(
                 Q(name__icontains=search)
@@ -393,8 +397,12 @@ class ParentGuardianListView(APIView):
             
             # Get guardians for this parent's student
             student = parent_guardian.student
+            # Match by foreign key or by student name; accept names with or without spaces
+            student_name_no_space = student.name.replace(' ', '')
             guardians = Guardian.objects.filter(
-                (Q(student=student) | Q(student_name__iexact=student.name)),
+                (Q(student=student)
+                 | Q(student_name__iexact=student.name)
+                 | Q(student_name__iexact=student_name_no_space)),
                 status='pending'
             ).order_by('-timestamp')
             
@@ -445,8 +453,11 @@ class ParentGuardianListView(APIView):
                 )
             
             # Get the guardian - verify it belongs to this parent's student
+            student_name_no_space = parent_guardian.student.name.replace(' ', '')
             guardian_qs = Guardian.objects.filter(id=pk).filter(
-                Q(student=parent_guardian.student) | Q(student_name__iexact=parent_guardian.student.name)
+                Q(student=parent_guardian.student)
+                | Q(student_name__iexact=parent_guardian.student.name)
+                | Q(student_name__iexact=student_name_no_space)
             )
             guardian = guardian_qs.first()
             if not guardian:
@@ -522,8 +533,11 @@ class ParentGuardianListView(APIView):
                 )
             
             # Get the guardian - verify it belongs to this parent's student
+            student_name_no_space = parent_guardian.student.name.replace(' ', '')
             guardian_qs = Guardian.objects.filter(id=pk).filter(
-                Q(student=parent_guardian.student) | Q(student_name__iexact=parent_guardian.student.name)
+                Q(student=parent_guardian.student)
+                | Q(student_name__iexact=parent_guardian.student.name)
+                | Q(student_name__iexact=student_name_no_space)
             )
             guardian = guardian_qs.first()
             if not guardian:
