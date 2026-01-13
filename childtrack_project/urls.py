@@ -15,6 +15,7 @@ urlpatterns = [
     path('api/notifications/', ParentNotificationListCreateView.as_view(), name='notifications'),
     path('api/events/', ParentEventListCreateView.as_view(), name='events'),
     path('api/schedule/', ParentScheduleListCreateView.as_view(), name='schedule'),
+    path('health/', views.health_check, name='health_check'),
 ]
 
 # In development `static()` is only added when DEBUG is True. On some deployments
