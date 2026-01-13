@@ -4,6 +4,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from parents.views import ParentNotificationListCreateView, ParentEventListCreateView, ParentScheduleListCreateView
 from django.urls import re_path
+from . import views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
