@@ -1,6 +1,11 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import TeacherProfile, Attendance, Absence, Dropout, UnauthorizedPerson, ScanPhoto
+from rest_framework import serializers
+from .models import Attendance
+from datetime import datetime
+from django.utils import timezone
+
 
 class TeacherProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(write_only=True)
@@ -29,18 +34,31 @@ class TeacherProfileSerializer(serializers.ModelSerializer):
         teacher_profile = TeacherProfile.objects.create(user=user, **validated_data)
         return teacher_profile
 
-class AttendanceSerializer(serializers.ModelSerializer):
-    teacher_name = serializers.CharField(source='teacher.user.first_name', read_only=True)
-    lrn = serializers.CharField(source='student_lrn', required=False)
-    qr_data = serializers.CharField(source='qr_code_data', required=False)  # Alias for qr_code_data
-    parent = serializers.CharField(source='guardian_name', required=False)  # Alias for guardian_name
 
+class AttendanceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Attendance
-        fields = ['id', 'teacher', 'teacher_name', 'student_name', 'student_lrn', 'lrn', 'gender', 
-                  'guardian_name', 'parent', 'date', 'status', 'session', 'transaction_type',
-                  'qr_code_data', 'qr_data', 'timestamp']
-        read_only_fields = ['timestamp', 'teacher']
+        fields = ['id', 'teacher', 'student_name', 'student_lrn', 'gender', 
+                  'guardian_name', 'date', 'status', 'qr_code_data', 
+                  'timestamp', 'session', 'transaction_type']
+        read_only_fields = ['id']
+    
+    def create(self, validated_data):
+        # If timestamp is not provided, use current time
+        if 'timestamp' not in validated_data or not validated_data.get('timestamp'):
+            validated_data['timestamp'] = timezone.now()
+        
+        return super().create(validated_data)
+    
+    def to_representation(self, instance):
+        """Customize the output to include formatted time"""
+        data = super().to_representation(instance)
+        
+        # Extract just the time portion (HH:MM) from timestamp for display
+        if instance.timestamp:
+            data['time'] = instance.timestamp.strftime('%H:%M')
+        
+        return data
 
 class AbsenceSerializer(serializers.ModelSerializer):
     teacher_name = serializers.CharField(source='teacher.user.first_name', read_only=True)
@@ -108,5 +126,6 @@ class ScanPhotoSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Invalid base64 format")
         
         return value
+
 
 
