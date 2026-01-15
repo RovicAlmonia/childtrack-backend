@@ -55,7 +55,7 @@ class Attendance(models.Model):
     date = models.DateField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Present')
     qr_code_data = models.TextField(blank=True, null=True)
-    timestamp = models.DateTimeField(auto_now_add=True)
+    timestamp = models.DateTimeField()  # REMOVED auto_now_add=True
     session = models.CharField(
         max_length=2,
         choices=[('AM', 'Morning'), ('PM', 'Afternoon')],
