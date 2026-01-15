@@ -30,6 +30,13 @@ ALLOWED_HOSTS = [
     '.onrender.com',
 ]
 
+
+# Set your timezone to Philippines
+TIME_ZONE = 'Asia/Manila'
+
+# Make Django timezone-aware
+USE_TZ = True
+
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
