@@ -5,7 +5,7 @@ from rest_framework import serializers
 from .models import Attendance
 from datetime import datetime
 from django.utils import timezone
-
+import pytz
 
 class TeacherProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(write_only=True)
@@ -35,6 +35,8 @@ class TeacherProfileSerializer(serializers.ModelSerializer):
         return teacher_profile
 
 
+
+
 class AttendanceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Attendance
@@ -44,22 +46,39 @@ class AttendanceSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
     
     def create(self, validated_data):
-        # If timestamp is not provided, use current time
-        if 'timestamp' not in validated_data or not validated_data.get('timestamp'):
-            validated_data['timestamp'] = timezone.now()
+        # Get the timestamp from the request
+        timestamp = validated_data.get('timestamp')
+        
+        if timestamp:
+            # Ensure the timestamp is timezone-aware for Philippines
+            philippines_tz = pytz.timezone('Asia/Manila')
+            
+            # If timestamp is naive (no timezone), make it aware
+            if timezone.is_naive(timestamp):
+                timestamp = philippines_tz.localize(timestamp)
+                validated_data['timestamp'] = timestamp
+        else:
+            # If no timestamp provided, use current Philippines time
+            philippines_tz = pytz.timezone('Asia/Manila')
+            validated_data['timestamp'] = timezone.now().astimezone(philippines_tz)
         
         return super().create(validated_data)
     
     def to_representation(self, instance):
-        """Customize the output to include formatted time"""
+        """Customize the output to show Philippines time"""
         data = super().to_representation(instance)
         
-        # Extract just the time portion (HH:MM) from timestamp for display
         if instance.timestamp:
-            data['time'] = instance.timestamp.strftime('%H:%M')
+            # Convert to Philippines timezone
+            philippines_tz = pytz.timezone('Asia/Manila')
+            local_time = instance.timestamp.astimezone(philippines_tz)
+            
+            # Format as HH:MM for display
+            data['time'] = local_time.strftime('%H:%M')
+            # Also update the timestamp to show in Philippines time
+            data['timestamp'] = local_time.isoformat()
         
         return data
-
 class AbsenceSerializer(serializers.ModelSerializer):
     teacher_name = serializers.CharField(source='teacher.user.first_name', read_only=True)
 
@@ -126,6 +145,7 @@ class ScanPhotoSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Invalid base64 format")
         
         return value
+
 
 
 
