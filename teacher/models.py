@@ -55,14 +55,7 @@ class Attendance(models.Model):
     date = models.DateField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Present')
     qr_code_data = models.TextField(blank=True, null=True)
-    
-    # CHANGED: Remove auto_now_add to allow manual time input
-    # Store the actual attendance time (when student arrived/left)
-    timestamp = models.TimeField(help_text="Time of attendance (HH:MM)")
-    
-    # ADD: Separate field for when the record was created in the system
-    created_at = models.DateTimeField(auto_now_add=True, help_text="When this record was entered into the system")
-    
+    timestamp = models.DateTimeField(auto_now_add=True)
     session = models.CharField(
         max_length=2,
         choices=[('AM', 'Morning'), ('PM', 'Afternoon')],
@@ -80,7 +73,7 @@ class Attendance(models.Model):
         ordering = ['-date', '-timestamp']
 
     def __str__(self):
-        return f"{self.student_name} - {self.status} ({self.transaction_type}) - {self.date} {self.timestamp}"
+        return f"{self.student_name} - {self.status} ({self.transaction_type}) - {self.date}"
 
 
 class Absence(models.Model):
