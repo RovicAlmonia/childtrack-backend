@@ -33,64 +33,128 @@ class TeacherProfileSerializer(serializers.ModelSerializer):
         )
         teacher_profile = TeacherProfile.objects.create(user=user, **validated_data)
         return teacher_profile
+from rest_framework import serializers
+from .models import (
+    TeacherProfile, 
+    Attendance, 
+    Absence, 
+    Dropout, 
+    UnauthorizedPerson, 
+    ScanPhoto
+)
+from django.contrib.auth.models import User
+from datetime import datetime
+import pytz
+
+# ... keep your existing TeacherProfile and User serializers ...
 
 class AttendanceSerializer(serializers.ModelSerializer):
+    time = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    
     class Meta:
         model = Attendance
-        fields = ['id', 'teacher', 'student_name', 'student_lrn', 'gender', 
-                  'guardian_name', 'date', 'status', 'qr_code_data', 
-                  'timestamp', 'session', 'transaction_type']
+        fields = [
+            'id', 'teacher', 'student_name', 'student_lrn', 'gender',
+            'guardian_name', 'date', 'status', 'qr_code_data',
+            'timestamp', 'time', 'session', 'transaction_type'
+        ]
         read_only_fields = ['id']
     
     def create(self, validated_data):
         """Handle timestamp creation with Philippines timezone"""
+        # Remove 'time' from validated_data if present (we'll use it to create timestamp)
+        time_str = validated_data.pop('time', None)
         timestamp = validated_data.get('timestamp')
         
-        if timestamp:
-            # Parse the ISO timestamp string if it's a string
-            if isinstance(timestamp, str):
+        philippines_tz = pytz.timezone('Asia/Manila')
+        
+        # If timestamp is provided as a string, parse it
+        if timestamp and isinstance(timestamp, str):
+            try:
+                # Try parsing ISO format with timezone: 2026-01-13T10:51:00+08:00
+                timestamp = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            except (ValueError, AttributeError):
+                # Fallback: parse basic ISO format
                 try:
-                    # Parse ISO format with timezone: 2026-01-13T10:51:00+08:00
-                    timestamp = datetime.fromisoformat(timestamp)
-                except ValueError:
-                    # Fallback: parse without timezone and add Philippines TZ
                     timestamp = datetime.strptime(timestamp[:19], '%Y-%m-%dT%H:%M:%S')
-                    philippines_tz = pytz.timezone('Asia/Manila')
                     timestamp = philippines_tz.localize(timestamp)
-            
-            # Ensure timestamp is timezone-aware
-            if timezone.is_naive(timestamp):
-                philippines_tz = pytz.timezone('Asia/Manila')
-                timestamp = philippines_tz.localize(timestamp)
-            
-            validated_data['timestamp'] = timestamp
-        else:
-            # If no timestamp, use current Philippines time
-            philippines_tz = pytz.timezone('Asia/Manila')
-            validated_data['timestamp'] = timezone.now().astimezone(philippines_tz)
+                except ValueError:
+                    timestamp = None
+        
+        # If we have a time string and date, create timestamp from those
+        if time_str and validated_data.get('date'):
+            try:
+                date_obj = validated_data['date']
+                # Parse time string (HH:MM format)
+                time_parts = time_str.split(':')
+                hour = int(time_parts[0])
+                minute = int(time_parts[1]) if len(time_parts) > 1 else 0
+                
+                # Create datetime object
+                dt = datetime.combine(date_obj, datetime.min.time())
+                dt = dt.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                
+                # Localize to Philippines timezone
+                timestamp = philippines_tz.localize(dt)
+            except (ValueError, IndexError, AttributeError) as e:
+                print(f"Error parsing time: {e}")
+                # Fallback to current time if parsing fails
+                timestamp = datetime.now(philippines_tz)
+        
+        # If still no timestamp, use current Philippines time
+        if not timestamp:
+            timestamp = datetime.now(philippines_tz)
+        
+        # Ensure timestamp is timezone-aware
+        if timestamp.tzinfo is None:
+            timestamp = philippines_tz.localize(timestamp)
+        
+        validated_data['timestamp'] = timestamp
+        
+        print(f"📝 Creating attendance with timestamp: {timestamp} (Philippines time)")
         
         return super().create(validated_data)
     
     def update(self, instance, validated_data):
         """Handle timestamp updates with Philippines timezone"""
+        # Remove 'time' from validated_data if present
+        time_str = validated_data.pop('time', None)
         timestamp = validated_data.get('timestamp')
         
-        if timestamp:
-            # Parse the ISO timestamp string if it's a string
-            if isinstance(timestamp, str):
+        philippines_tz = pytz.timezone('Asia/Manila')
+        
+        # If timestamp is provided as a string, parse it
+        if timestamp and isinstance(timestamp, str):
+            try:
+                timestamp = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            except (ValueError, AttributeError):
                 try:
-                    timestamp = datetime.fromisoformat(timestamp)
-                except ValueError:
                     timestamp = datetime.strptime(timestamp[:19], '%Y-%m-%dT%H:%M:%S')
-                    philippines_tz = pytz.timezone('Asia/Manila')
                     timestamp = philippines_tz.localize(timestamp)
-            
-            # Ensure timestamp is timezone-aware
-            if timezone.is_naive(timestamp):
-                philippines_tz = pytz.timezone('Asia/Manila')
-                timestamp = philippines_tz.localize(timestamp)
-            
+                except ValueError:
+                    timestamp = None
+        
+        # If we have a time string and date, create timestamp from those
+        if time_str and (validated_data.get('date') or instance.date):
+            try:
+                date_obj = validated_data.get('date', instance.date)
+                time_parts = time_str.split(':')
+                hour = int(time_parts[0])
+                minute = int(time_parts[1]) if len(time_parts) > 1 else 0
+                
+                dt = datetime.combine(date_obj, datetime.min.time())
+                dt = dt.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                timestamp = philippines_tz.localize(dt)
+            except (ValueError, IndexError, AttributeError):
+                pass
+        
+        # Ensure timestamp is timezone-aware
+        if timestamp and timestamp.tzinfo is None:
+            timestamp = philippines_tz.localize(timestamp)
+        
+        if timestamp:
             validated_data['timestamp'] = timestamp
+            print(f"📝 Updating attendance with timestamp: {timestamp} (Philippines time)")
         
         return super().update(instance, validated_data)
     
@@ -99,10 +163,9 @@ class AttendanceSerializer(serializers.ModelSerializer):
         data = super().to_representation(instance)
         
         if instance.timestamp:
-            # Convert to Philippines timezone
             philippines_tz = pytz.timezone('Asia/Manila')
             
-            # If timestamp is stored in UTC, convert it
+            # Convert to Philippines timezone
             if instance.timestamp.tzinfo is None:
                 # Naive datetime - assume UTC and convert
                 utc_time = pytz.utc.localize(instance.timestamp)
@@ -115,9 +178,11 @@ class AttendanceSerializer(serializers.ModelSerializer):
             data['time'] = local_time.strftime('%H:%M')
             
             # Keep full timestamp in Philippines time
-            data['timestamp'] = local_time.isoformat()
+            data['timestamp'] = local_time.strftime('%H:%M')
         
         return data
+
+# ... keep your other serializers (Absence, Dropout, etc.) ...
 
 
 
@@ -187,6 +252,7 @@ class ScanPhotoSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Invalid base64 format")
         
         return value
+
 
 
 
