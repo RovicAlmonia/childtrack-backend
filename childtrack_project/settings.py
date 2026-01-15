@@ -37,6 +37,9 @@ TIME_ZONE = 'Asia/Manila'
 # Make Django timezone-aware
 USE_TZ = True
 
+# Make sure this is in your settings
+LANGUAGE_CODE = 'en-us'
+
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
