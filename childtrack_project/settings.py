@@ -96,6 +96,20 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'childtrack_project.wsgi.application'
 
+# Add this right after your DATABASES configuration
+import sys
+
+# Check if we're in a build/collectstatic phase
+if 'collectstatic' in sys.argv:
+    # Use a dummy database for collectstatic
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': ':memory:',
+        }
+    }
+
+
 # Database configuration - Updated with new database
 DATABASES = {
     'default': dj_database_url.parse(
