@@ -4,7 +4,9 @@ Django settings for childtrack_project project.
 
 from pathlib import Path
 import os
-load_dotenv(override=False)  # already the default, but be explicit
+import sys
+
+# These must come BEFORE load_dotenv is called
 import dj_database_url
 from dotenv import load_dotenv
 
@@ -12,8 +14,8 @@ import cloudinary
 import cloudinary.uploader
 import cloudinary.api
 
-
-
+# Load .env for local dev only — don't override Render's env vars
+load_dotenv(override=False)
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
