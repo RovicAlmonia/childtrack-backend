@@ -115,7 +115,7 @@ DATABASES = {
     'default': dj_database_url.parse(
         os.getenv(
             'DATABASE_URL',
-            'postgresql://childtrack7_user:eqsyaDe9egIuakQCv3lYNyjKOg5xAjCQ@dpg-d5tha18gjchc73fa1vhg-a/childtrack7'
+            'postgresql://childtrack8_user:dQKgKAzkoTdabCKAwvLkviWAZUtDKkzl@dpg-d6oem79aae7s73a7gthg-a/childtrack8'
         )
     )
 }
